@@ -1,6 +1,6 @@
 import { FunctionalComponent } from "preact";
 import { useEffect, useState, useCallback } from "preact/hooks";
-import { useHashParamJson } from "@metapages/metaframe-hook";
+import { useHashParamJson } from "@metapages/hash-query";
 import {
   Box,
   Drawer,

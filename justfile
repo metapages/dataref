@@ -43,7 +43,7 @@ grey                               := "\\e[90m"
     echo -e ""
 
 # Run the dev server. Opens the web app in browser.
-_dev: _mkcert _ensure_npm_modules (_tsc "--build")
+dev: _mkcert _ensure_npm_modules (_tsc "--build")
     #!/usr/bin/env bash
     set -euo pipefail
     APP_ORIGIN=https://${APP_FQDN}:${APP_PORT}

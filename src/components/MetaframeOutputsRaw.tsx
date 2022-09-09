@@ -4,7 +4,7 @@ import {
   useMetaframe,
 } from "@metapages/metaframe-hook";
 import { Badge } from "@chakra-ui/react";
-import { Metaframe, MetaframeInputMap } from "@metapages/metapage";
+import { MetaframeEvents, MetaframeInputMap } from "@metapages/metapage";
 
 export const MetaframeOutputsRaw: FunctionalComponent = () => {
   // This is currently the most performant way to get metaframe
@@ -21,11 +21,11 @@ export const MetaframeOutputsRaw: FunctionalComponent = () => {
     const onInputs = (newinputs: MetaframeInputMap): void => {
       setInputs(newinputs);
     };
-    metaframe.addListener(Metaframe.INPUTS, onInputs);
+    metaframe.addListener(MetaframeEvents.Inputs, onInputs);
 
     return () => {
       // If the metaframe is cleaned up, also remove the inputs listener
-      metaframe.removeListener(Metaframe.INPUTS, onInputs);
+      metaframe.removeListener(MetaframeEvents.Inputs, onInputs);
     };
   }, [metaframeObject.metaframe, setInputs]);
 

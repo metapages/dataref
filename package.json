@@ -25,11 +25,12 @@
     "@chakra-ui/react": "^1.6.5",
     "@emotion/react": "^11.4.0",
     "@emotion/styled": "^11.3.0",
-    "@metapages/metaframe-hook": "^0.6.16",
-    "@metapages/metapage": "^0.8.4",
+    "@metapages/hash-query": "^0.4.5",
+    "@metapages/metaframe-hook": "^1.0.9",
+    "@metapages/metapage": "^0.12.3",
     "framer-motion": "^4.1.17",
-    "preact": "^10.5.13",
-    "preact-router": "^3.2.1"
+    "preact": "^10.10.6",
+    "preact-router": "^4.1.0"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.3.0",
@@ -37,8 +38,8 @@
     "@types/react": "^17.0.2",
     "@types/react-dom": "^17.0.1",
     "@types/react-router-dom": "^5.1.7",
-    "typescript": "^4.1.5",
-    "vite": "^3.0.7"
+    "typescript": "^4.8.3",
+    "vite": "^3.1.0"
   },
   "engines": {
     "node": "14.x"
