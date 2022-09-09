@@ -7,16 +7,13 @@ import preact from "@preact/preset-vite";
 
 // values acted on: [glitch]
 const DEPLOY_TARGET: string | undefined = process.env.DEPLOY_TARGET;
-const HOST: string = process.env.HOST || "server1.localhost";
+const HOST: string = process.env.HOST || "metaframe1.localhost";
 const PORT: string = process.env.PORT || "4440";
 const CERT_FILE: string | undefined = process.env.CERT_FILE;
 const CERT_KEY_FILE: string | undefined = process.env.CERT_KEY_FILE;
 const BASE: string | undefined = process.env.BASE;
-const OUTDIR: string = process.env.OUTDIR ?? "./dist";
+const OUTDIR: string | undefined = process.env.OUTDIR;
 const INSIDE_CONTAINER: boolean = fs.existsSync("/.dockerenv");
-
-console.log('BASE', BASE);
-console.log('OUTDIR', OUTDIR);
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => ({

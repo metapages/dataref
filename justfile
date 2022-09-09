@@ -18,6 +18,9 @@ export DOCKER_IMAGE_PREFIX         := "ghcr.io/metapages/" + PACKAGE_NAME_SHORT
 export DOCKER_TAG                  := `if [ "${GITHUB_ACTIONS}" = "true" ]; then echo "${GITHUB_SHA}"; else echo "$(git rev-parse --short=8 HEAD)"; fi`
 # The NPM_TOKEN is required for publishing to https://www.npmjs.com
 NPM_TOKEN                          := env_var_or_default("NPM_TOKEN", "")
+# Source of deno scripts. When developing we need to switch this
+DENO_SOURCE                        := env_var_or_default("DENO_SOURCE", "https://deno.land/x/metapages@v0.0.13")
+# vite needs an extra memory boost
 vite                               := "VITE_APP_FQDN=" + APP_FQDN + " VITE_APP_PORT=" + APP_PORT + " NODE_OPTIONS='--max_old_space_size=16384' ./node_modules/vite/bin/vite.js"
 tsc                                := "./node_modules/typescript/bin/tsc"
 # minimal formatting, bold is very useful
@@ -40,27 +43,39 @@ grey                               := "\\e[90m"
     echo -e ""
 
 # Run the dev server. Opens the web app in browser.
-dev: _mkcert _ensure_npm_modules (_tsc "--build")
+_dev: _mkcert _ensure_npm_modules (_tsc "--build")
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Browser development pointing to: https://${APP_FQDN}:${APP_PORT}"
+    APP_ORIGIN=https://${APP_FQDN}:${APP_PORT}
+    echo "Browser development pointing to: ${APP_ORIGIN}"
+    MAYBE_OPEN_BROWSER=""
+    if [ ! -f /.dockerenv ]; then
+        export MAYBE_OPEN_BROWSER="--open";
+    fi
     npm i
     export HOST={{APP_FQDN}}
     export PORT={{APP_PORT}}
     export CERT_FILE=.certs/{{APP_FQDN}}.pem
     export CERT_KEY_FILE=.certs/{{APP_FQDN}}-key.pem
-    {{vite}} --clearScreen false
+    export BASE=
+    VITE_APP_ORIGIN=${APP_ORIGIN} {{vite}} --clearScreen false ${MAYBE_OPEN_BROWSER}
 
 # Publish to npm and github pages.
 publish npmversionargs="patch": _ensureGitPorcelain (_tsc "--build") (_npm_version npmversionargs) _npm_publish _githubpages_publish
     @# Push the tags up
     git push origin v$(cat package.json | jq -r '.version')
 
+build BASE="": _ensure_npm_modules (_tsc "--build")
+    HOST={{APP_FQDN}} \
+    OUTDIR=./docs \
+    BASE={{BASE}} \
+        deno run --allow-all --unstable {{DENO_SOURCE}}/browser/vite-build.ts --versioning=true
+
 # Build the browser client static assets and npm module
-build: (_tsc "--build") _browser_assets_build _npm_build
+# build: (_tsc "--build") _browser_assets_build _npm_build
 
 # Test: currently bare minimum: only building. Need proper test harness.
-@test: (_tsc "--build") _npm_build
+@test: (_tsc "--build") build
 
 # Deletes: .certs dist
 @clean:
@@ -71,17 +86,9 @@ watch:
     watchexec -w src -w tsconfig.json -w package.json -w vite.config.ts -- just _browser_assets_build
 
 # Watch and serve browser client. Can't use vite to serve: https://github.com/vitejs/vite/issues/2754
-serve BASE="": _mkcert
-    #!/usr/bin/env bash
-    set -euo pipefail
-    npm i
-    export HOST={{APP_FQDN}}
-    export PORT={{APP_PORT}}
-    export CERT_FILE=.certs/{{APP_FQDN}}.pem
-    export CERT_KEY_FILE=.certs/{{APP_FQDN}}-key.pem
-    export BASE={{BASE}}
-    export OUTDIR=docs/{{BASE}}
-    {{vite}} serve
+serve: _mkcert build
+    cd docs && \
+    npx http-server --cors '*' -a {{APP_FQDN}} -p {{APP_PORT}} --ssl --cert ../.certs/{{APP_FQDN}}.pem --key ../.certs/{{APP_FQDN}}-key.pem
 
 # Build npm package for publishing
 @_npm_build: _ensure_npm_modules
@@ -128,30 +135,13 @@ _npm_publish: _require_NPM_TOKEN _npm_build
     fi
     npm publish --access public .
 
-# build production brower assets
-_browser_assets_build BASE="": _ensure_npm_modules
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    export HOST={{APP_FQDN}}
-    export PORT={{APP_PORT}}
-    export CERT_FILE=.certs/{{APP_FQDN}}-key.pem
-    export CERT_KEY_FILE=.certs/{{APP_FQDN}}.pem
-    export BASE={{BASE}}
-    export OUTDIR=docs/{{BASE}}
-
-    mkdir -p ${OUTDIR}
-    find ${OUTDIR} -maxdepth 1 -type f -exec rm "{}" \;
-    rm -rf $(echo "${OUTDIR}/assets" | sed s#//*#/#g)
-    {{vite}} build --mode=production
-
 # compile typescript src, may or may not emit artifacts
 _tsc +args="": _ensure_npm_modules
     {{tsc}} {{args}}
 
 # DEV: generate TLS certs for HTTPS over localhost https://blog.filippo.io/mkcert-valid-https-certificates-for-localhost/
 @_mkcert:
-    APP_FQDN={{APP_FQDN}} CERTS_DIR=.certs deno run --allow-all --unstable https://deno.land/x/metapages@v0.0.7/commands/ensure_mkcert.ts
+    APP_FQDN={{APP_FQDN}} CERTS_DIR=.certs deno run --allow-all --unstable {{DENO_SOURCE}}/commands/ensure_mkcert.ts
 
 @_ensure_npm_modules:
     if [ ! -f "{{tsc}}" ]; then npm i; fi
@@ -161,36 +151,8 @@ _tsc +args="": _ensure_npm_modules
     {{vite}} {{args}}
 
 # update "gh-pages" branch with the (versioned and default) current build (./docs) (and keeping all previous versions)
-_githubpages_publish: _ensureGitPorcelain
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # Mostly CURRENT_BRANCH should be main, but maybe you are testing on a different branch
-    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    if [ -z "$(git branch --list gh-pages)" ]; then
-        git checkout -b gh-pages;
-    fi
-
-    git checkout gh-pages
-
-    git rebase --strategy recursive --strategy-option theirs ${CURRENT_BRANCH}
-
-    # Then build
-    BASE=$(cat package.json | jq -r .name | cut -d'/' -f2)
-    # We build twice to keep all old versions
-    just _browser_assets_build $BASE
-    just _browser_assets_build
-
-    # Now commit and push
-    git add --all --force docs
-    git commit -m "site v$(cat package.json | jq -r .version)"
-    git push -uf origin gh-pages
-
-    # Return to the original branch
-    git checkout ${CURRENT_BRANCH}
-    echo -e "👉 Github configuration (once): 🔗 https://github.com/$(git remote get-url origin | sd 'git@github.com:' '' | sd '.git' '')/settings/pages"
-    echo -e "  - {{green}}Source{{normal}}"
-    echo -e "    - {{green}}Branch{{normal}}: gh-pages 📁 /docs"
+_githubpages_publish:
+    deno run --unstable --allow-all {{DENO_SOURCE}}/browser/gh-pages-publish-to-docs.ts --versioning=true
 
 ####################################################################################
 # Ensure docker image for local and CI operations
@@ -246,7 +208,7 @@ _ensure_inside_docker:
     fi
 
 @_ensureGitPorcelain:
-    deno run --allow-all --unstable https://deno.land/x/metapages@v0.0.6/git/git_fail_if_uncommitted_files.ts
+    deno run --allow-all --unstable {{DENO_SOURCE}}/git/git_fail_if_uncommitted_files.ts
 
 @_require_NPM_TOKEN:
 	if [ -z "{{NPM_TOKEN}}" ]; then echo "Missing NPM_TOKEN env var"; exit 1; fi
