@@ -208,7 +208,7 @@ _ensure_inside_docker:
     fi
 
 @_ensureGitPorcelain:
-    deno run --allow-all --unstable {{DENO_SOURCE}}/git/git_fail_if_uncommitted_files.ts
+    deno run --allow-all --unstable {{DENO_SOURCE}}/git/git-fail-if-uncommitted-files.ts
 
 @_require_NPM_TOKEN:
 	if [ -z "{{NPM_TOKEN}}" ]; then echo "Missing NPM_TOKEN env var"; exit 1; fi
