@@ -28,10 +28,12 @@
     "test": "vitest"
   },
   "devDependencies": {
+    "@rollup/plugin-typescript": "^12.1.1",
     "@types/node": "^20.10.0",
+    "rollup-plugin-typescript-paths": "^1.5.0",
     "typescript": "^5.4.5",
     "vite": "^5.2.11",
-    "vite-plugin-dts": "^4.2.3",
+    "vite-plugin-dts": "^4.3.0",
     "vite-tsconfig-paths": "^5.0.1",
     "vitest": "^2.1.1"
   },

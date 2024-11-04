@@ -1,38 +1,61 @@
-/// <reference types="vitest" />
-import fs from 'fs';
-import path from 'path';
+import path, { resolve } from 'path';
+import { typescriptPaths } from 'rollup-plugin-typescript-paths';
 import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
-import tsconfigPaths from 'vite-tsconfig-paths';
-
-// Get the github pages path e.g. if served from https://<name>.github.io/<repo>/
-// then we need to pull out "<repo>"
-const packageName = JSON.parse(
-  fs.readFileSync("./package.json", { encoding: "utf8", flag: "r" })
-)["name"];
+import typescript from '@rollup/plugin-typescript';
 
 // https://vitejs.dev/config/
-export default defineConfig(({ command, mode }) => ({
+
+export default defineConfig(({ mode }) => ({
   test: {
     globals: true,
     // root: './src/lib',
   },
-  plugins: [tsconfigPaths(), dts({exclude: "**/*.test.ts"})],
+
   resolve: {
     alias: {
-      "/@": path.resolve(__dirname, "./src"),
+      "/@": resolve(__dirname, "./src"),
     },
   },
+
+  plugins: [dts({exclude: "**/*.test.ts"})],
+
+  esbuild: {
+    logOverride: { "this-is-undefined-in-esm": "silent" },
+  },
+
   build: {
-    lib: {
-      entry: path.resolve(__dirname, 'src/lib/index.ts'),
-      name: packageName,
-      formats: ['es'],
-      // fileName: 'my-lib'
-    },
+    outDir: "./dist",
+    target: "modules",
+    emptyOutDir: true,
     sourcemap: true,
-    minify: mode === "development" ? false : "esbuild",
-    emptyOutDir: false,
-    target: 'modules',
+    minify: "esbuild",
+    reportCompressedSize: true,
+    lib: {
+      entry: path.resolve(__dirname, "src/index.ts"),
+      formats: ["es"],
+      fileName: (format) => `index.${format === 'es' ? 'js' : format}`,
+    },
+    rollupOptions: {
+      output: {
+        entryFileNames: '[name].js',
+        chunkFileNames: '[name].js',
+        // Make sure to keep separate files for imports
+        // entryFileNames: '[name].js',
+        // chunkFileNames: '[name]-[hash].js',
+        // assetFileNames: '[name]-[hash][extname]',
+      },
+      external: [],
+      plugins: [
+        typescriptPaths({
+          preserveExtensions: true,
+        }),
+        typescript({
+          sourceMap: true,
+          declaration: true,
+          outDir: "dist",
+        }),
+      ],
+    },
   },
 }));
