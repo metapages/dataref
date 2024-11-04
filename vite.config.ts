@@ -9,7 +9,6 @@ import typescript from '@rollup/plugin-typescript';
 export default defineConfig(({ mode }) => ({
   test: {
     globals: true,
-    // root: './src/lib',
   },
 
   resolve: {
