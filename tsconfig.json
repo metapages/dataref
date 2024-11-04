@@ -2,14 +2,14 @@
   "compilerOptions": {
     "allowJs": true,
     "allowSyntheticDefaultImports": true,
-    "baseUrl": "./src",
+    // "baseUrl": "./src",
     "declaration": true,
     "declarationMap": true,
-    "esModuleInterop": true,
-    "emitDeclarationOnly": true,
+    // "esModuleInterop": true,
+    // "emitDeclarationOnly": true,
     // vite recommends this
-    "isolatedModules": true,
-    "lib": ["ES2020", "DOM"],
+    // "isolatedModules": true,
+    // "lib": ["ES2020"],
     "module": "ES2020",
     "moduleResolution": "node",
     "noImplicitAny": true,
@@ -28,9 +28,10 @@
     "strictFunctionTypes": true,
     "strictNullChecks": true,
     "target": "ES2020",
-    "typeRoots": ["./node_modules/@types", "./src/types"],
-    "types": ["vite/client"]
+    // "typeRoots": ["./node_modules/@types"],
+    "types": ["vitest/globals"],
+    "verbatimModuleSyntax": true
   },
   "exclude": ["node_modules", "dist"],
-  "include": ["./src/lib/*"]
+  "include": ["./src"],
 }

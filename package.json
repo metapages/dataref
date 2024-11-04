@@ -1,16 +1,12 @@
 {
-  "name": "@metapages/hash-query",
-  "version": "0.4.16",
+  "name": "@metapages/dataref",
+  "version": "0.2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/metapages/hash-query"
+    "url": "https://github.com/metapages/dataref"
   },
   "keywords": [
-    "hash",
-    "query",
-    "url",
-    "url-query",
-    "hooks"
+    "dataref"
   ],
   "files": [
     "dist/**/*",
@@ -26,18 +22,18 @@
     }
   },
   "main": "./dist/index.umd.cjs",
-  "homepage": "https://github.com/metapages/hash-query/tree/main/docs#readme",
+  "homepage": "https://github.com/metapages/dataref/tree/main/docs#readme",
   "scripts": {
-    "note": "echo 'use just. See README.md'"
-  },
-  "peerDependencies": {
-    "react": "x"
+    "note": "echo 'use just. See README.md'",
+    "test": "vitest"
   },
   "devDependencies": {
-    "@types/node": "^12.20.10",
-    "@types/react": "^17.0.2",
-    "typescript": "^4.7.4",
-    "vite": "^2.5.0"
+    "@types/node": "^20.10.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11",
+    "vite-plugin-dts": "^4.2.3",
+    "vite-tsconfig-paths": "^5.0.1",
+    "vitest": "^2.1.1"
   },
   "browserslist": {
     "production": [
@@ -52,8 +48,5 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "dependencies": {
-    "fast-json-stable-stringify": "^2.1.0"
   }
 }

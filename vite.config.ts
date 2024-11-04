@@ -1,6 +1,9 @@
+/// <reference types="vitest" />
 import fs from 'fs';
 import path from 'path';
 import { defineConfig } from 'vite';
+import dts from 'vite-plugin-dts';
+import tsconfigPaths from 'vite-tsconfig-paths';
 
 // Get the github pages path e.g. if served from https://<name>.github.io/<repo>/
 // then we need to pull out "<repo>"
@@ -10,6 +13,11 @@ const packageName = JSON.parse(
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => ({
+  test: {
+    globals: true,
+    // root: './src/lib',
+  },
+  plugins: [tsconfigPaths(), dts({exclude: "**/*.test.ts"})],
   resolve: {
     alias: {
       "/@": path.resolve(__dirname, "./src"),
@@ -19,21 +27,8 @@ export default defineConfig(({ command, mode }) => ({
     lib: {
       entry: path.resolve(__dirname, 'src/lib/index.ts'),
       name: packageName,
-      fileName: (format) => {
-        return `index.${format}.${format === "umd" ? "cjs" : "js"}`;
-      }
-    },
-    rollupOptions: {
-      // make sure to externalize deps that shouldn't be bundled
-      // into your library
-      external: ["react"],
-      output: {
-        // Provide global variables to use in the UMD build
-        // for externalized deps
-        globals: {
-          react: "React"
-        }
-      }
+      formats: ['es'],
+      // fileName: 'my-lib'
     },
     sourcemap: true,
     minify: mode === "development" ? false : "esbuild",
