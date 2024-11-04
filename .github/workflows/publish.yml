@@ -1,5 +1,5 @@
 # https://docs.github.com/en/free-pro-team@latest/actions/reference/workflow-syntax-for-github-actions
-name: Deploy and Publish
+name: Publish
 
 # https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions
 on:
@@ -8,9 +8,9 @@ on:
       - "main"
 
 jobs:
-  deploy-and-publish:
+  publish:
     # Can switch to ubuntu-latest but self-hosted is safer and faster
-    name: Deploy and Publish
+    name: Publish
     runs-on: self-hosted
     steps:
       - name: Check out the repo
