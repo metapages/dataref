@@ -1,10 +1,10 @@
 {
   "name": "@metapages/dataref",
-  "version": "0.2.2",
+  "version": "0.2.5",
   "author": "Dion Whitehead <dion@metapage.io>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/metapages/dataref"
+    "url": "git+https://github.com/metapages/dataref.git"
   },
   "keywords": [
     "dataref"
@@ -12,8 +12,9 @@
   "main": "dist/index.js",
   "exports": "./dist/index.js",
   "files": [
-      "dist",
-      "src"
+    "dist",
+    "src",
+    "!src/test"
   ],
   "browser": "dist/index.js",
   "source": "src/index.ts",

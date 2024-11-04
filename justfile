@@ -95,6 +95,7 @@ publish: _require_NPM_TOKEN _ensure_node_modules
         fi
     fi
     just build
+    rm -rf dist/test
     echo "PUBLISHING npm version $VERSION"
     echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc && \
     npm publish --access public .
