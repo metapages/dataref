@@ -84,7 +84,7 @@ export const dataRefToFile = async (ref: DataRef, opts?: {
   }
 };
 
-export const dataRefToObject = async (ref: DataRef, opts?: {
+export const resolveDataRef = async (ref: DataRef, opts?: {
   fetchBlobFromKey?: FetchBlobFromKey;
   name?: string;
 }): Promise<string | object | File> => {
@@ -128,7 +128,7 @@ export const fileToObject = async (file: File): Promise<string | object | File> 
   // Handle text-based files
   if (mimeType.startsWith('text/') || mimeType === 'application/json') {
     const text = await file.text();
-    
+
     // Try to parse JSON if it's a JSON file
     if (mimeType === 'application/json') {
       try {
@@ -138,9 +138,10 @@ export const fileToObject = async (file: File): Promise<string | object | File> 
         return text;
       }
     }
-    
+ 
     return text;
   } 
+  
   // Return the original file for binary types
   return file;
 };
