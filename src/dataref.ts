@@ -5,7 +5,7 @@ import {
   DataRefTypesSet,
 } from './types';
 
-type FetchBlobFromKey = (key: String) => Promise<Uint8Array>;
+type FetchBlobFromKey = (key: String) => Promise<{buffer: ArrayBuffer, type:string}>;
 
 let globalFetchBlobFromKey: FetchBlobFromKey | undefined;
 
@@ -32,8 +32,8 @@ export const dataRefToBuffer = async (ref: DataRef, fetchBlobFromKey?: FetchBlob
     case DataRefType.json:
       return new TextEncoder().encode(JSON.stringify(ref.value));
     case DataRefType.url: {
-      const arrayBufferFromUrl = await urlToUint8Array(ref.value as string);
-      return arrayBufferFromUrl;
+      const {buffer:arrayBufferFromUrl} = await urlToArrayBuffer(ref.value as string);
+      return new Uint8Array(arrayBufferFromUrl);
     }
     case DataRefType.key: {
       // hard code this for now
@@ -41,7 +41,7 @@ export const dataRefToBuffer = async (ref: DataRef, fetchBlobFromKey?: FetchBlob
       if (!fetcher) {
         throw new Error("No fetchBlobFromKey function provided, and setGlobalFetchBlobFromKey not called");
       }
-      const arrayBufferFromKey = await fetcher(ref.value);
+      const {buffer:arrayBufferFromKey} = await fetcher(ref.value);
       return new Uint8Array(arrayBufferFromKey);
     }
     default: // undefined assume DataRefType.Base64
@@ -67,24 +67,85 @@ export const dataRefToFile = async (ref: DataRef, opts?: {
       name = name ?? await sha256Buffer(bufferJson);
       return new File([bufferJson], name, { type: "application/json" });
     case DataRefType.url:
-      const bufferUrl = await urlToUint8Array(ref.value as string);
+      const {buffer:bufferUrl, type} = await urlToArrayBuffer(ref.value as string);
       name = name ?? await sha256Buffer(bufferUrl);
-      return new File([bufferUrl], name, { type: "application/octet-stream" });
+      return new File([bufferUrl], name, { type });
     case DataRefType.key: {
       const fetcher = fetchBlobFromKey ?? globalFetchBlobFromKey;
       if (!fetcher) {
         throw new Error("No fetchBlobFromKey function provided, and setGlobalFetchBlobFromKey not called");
       }
-      const bufferFromKey = await fetcher(ref.value);
+      const {buffer:bufferFromKey, type} = await fetcher(ref.value);
       name = name ?? await sha256Buffer(bufferFromKey);
-      return new File([bufferFromKey], name, { type: "application/octet-stream" });
+      return new File([bufferFromKey], name, { type: type || "application/octet-stream" });
     }
     default:
       throw `Not yet implemented: DataRef.type "${ref.type}" unknown`;
   }
 };
 
-export const sha256Buffer = async (buffer: Uint8Array): Promise<string> => {
+export const dataRefToObject = async (ref: DataRef, opts?: {
+  fetchBlobFromKey?: FetchBlobFromKey;
+  name?: string;
+}): Promise<string | object | File> => {
+  const file = await dataRefToFile(ref, opts);
+  return await fileToObject(file);
+};
+
+export const dataRefToSerializedObject = async (ref: DataRef, opts?: {
+  fetchBlobFromKey?: FetchBlobFromKey;
+  name?: string;
+}): Promise<string | object | DataRef> => {
+  let { fetchBlobFromKey, name } = opts ?? {};
+  switch (ref.type) {
+    case DataRefType.base64:
+      return ref;
+    case DataRefType.utf8:
+      return ref;
+    case DataRefType.json:
+      return ref;
+    case DataRefType.url:
+      const {buffer:bufferUrl, type} = await urlToArrayBuffer(ref.value as string);
+      name = name ?? await sha256Buffer(bufferUrl);
+      return new File([bufferUrl], name, { type });
+    case DataRefType.key: {
+      const fetcher = fetchBlobFromKey ?? globalFetchBlobFromKey;
+      if (!fetcher) {
+        throw new Error("No fetchBlobFromKey function provided, and setGlobalFetchBlobFromKey not called");
+      }
+      const {buffer:bufferFromKey, type} = await fetcher(ref.value);
+      name = name ?? await sha256Buffer(bufferFromKey);
+      return new File([bufferFromKey], name, { type: type || "application/octet-stream" });
+    }
+    default:
+      throw `Not yet implemented: DataRef.type "${ref.type}" unknown`;
+  }
+};
+
+export const fileToObject = async (file: File): Promise<string | object | File> => {
+  const mimeType = file.type.split(';')[0].trim();
+  
+  // Handle text-based files
+  if (mimeType.startsWith('text/') || mimeType === 'application/json') {
+    const text = await file.text();
+    
+    // Try to parse JSON if it's a JSON file
+    if (mimeType === 'application/json') {
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        console.warn('Failed to parse JSON file, returning as text', e);
+        return text;
+      }
+    }
+    
+    return text;
+  } 
+  // Return the original file for binary types
+  return file;
+};
+
+export const sha256Buffer = async (buffer: BufferSource): Promise<string> => {
   const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
@@ -105,11 +166,14 @@ export const dataRefToDownloadLink = async (ref: DataRef, fetchBlobFromKey?: Fet
   return URL.createObjectURL(new Blob([buffer], { type: "application/octet-stream" }));
 };
 
-const urlToUint8Array = async (url: string): Promise<Uint8Array> => {
+const urlToArrayBuffer = async (url: string): Promise<{buffer: ArrayBuffer, type:string}> => {
   const response = await fetch(url, { redirect: "follow" });
   if (!response.ok) {
     throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
   }
+  const contentType = response.headers.get('content-type') || 'application/octet-stream';
+
   const arrayBuffer = await response.arrayBuffer();
-  return new Uint8Array(arrayBuffer);
+  
+  return { buffer: arrayBuffer, type: contentType };
 };
