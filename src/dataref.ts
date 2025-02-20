@@ -26,7 +26,7 @@ export const isDataRef = (value: any): boolean => {
 
 export const dataRefToBuffer = async (
   ref: DataRef,
-  opts: { fetchBlobFromKey?: FetchBlobFromKey; fetchOptions?: RequestInit }
+  opts?: { fetchBlobFromKey?: FetchBlobFromKey; fetchOptions?: RequestInit }
 ): Promise<Uint8Array> => {
   let { fetchBlobFromKey, fetchOptions } = opts ?? {};
   switch (ref.type) {
@@ -124,7 +124,7 @@ export const sha256Text = async (text: string): Promise<string> => {
  */
 export const dataRefToDownloadLink = async (
   ref: DataRef,
-  opts: { fetchBlobFromKey?: FetchBlobFromKey; fetchOptions?: RequestInit }
+  opts?: { fetchBlobFromKey?: FetchBlobFromKey; fetchOptions?: RequestInit }
 ): Promise<string> => {
   const buffer = await dataRefToBuffer(ref, opts);
   return URL.createObjectURL(
