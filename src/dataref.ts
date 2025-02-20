@@ -136,7 +136,7 @@ const urlToUint8Array = async (
   url: string,
   fetchOptions?: RequestInit
 ): Promise<Uint8Array> => {
-  fetchOptions = fetchOptions || { redirect: "follow", cache: "no-store" };
+  fetchOptions = fetchOptions || { redirect: "follow" };
   const response = await fetch(url, fetchOptions);
   if (!response.ok) {
     throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
