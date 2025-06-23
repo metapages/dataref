@@ -18,8 +18,12 @@ export const isDataRef = (value: any): boolean => {
   return !!(
     value &&
     typeof value === "object" &&
-    (value as DataRef)?.type &&
-    DataRefTypesSet.has((value as DataRef).type!) &&
+    // until we get this in:
+    // https://github.com/metapages/dataref/issues/1
+    // then we fail on previous versions that assumed type
+    // was "url" if missing, ugh.
+    // (value as DataRef)?.type &&
+    // DataRefTypesSet.has((value as DataRef).type!) &&
     (value as DataRef)?.value !== undefined
   );
 };
@@ -29,7 +33,8 @@ export const dataRefToBuffer = async (
   opts?: { fetchBlobFromKey?: FetchBlobFromKey; fetchOptions?: RequestInit }
 ): Promise<Uint8Array> => {
   let { fetchBlobFromKey, fetchOptions } = opts ?? {};
-  switch (ref.type) {
+  const type = ref.type ?? DataRefType.url;
+  switch (type) {
     case DataRefType.base64:
       return decodeBase64(ref.value as string);
     case DataRefType.utf8:
@@ -65,7 +70,8 @@ export const dataRefToFile = async (
   }
 ): Promise<File> => {
   let { fetchBlobFromKey, name, fetchOptions } = opts ?? {};
-  switch (ref.type) {
+  const type = ref.type ?? DataRefType.url;
+  switch (type) {
     case DataRefType.base64:
       const bufferBase64 = decodeBase64(ref.value as string);
       name = name ?? (await sha256Buffer(bufferBase64));
