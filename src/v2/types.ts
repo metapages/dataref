@@ -14,27 +14,30 @@ export const MIME_TYPES = {
 
 // Supported typed array types
 export type TypedArrayType =
-  | "Int8Array"
-  | "Uint8Array"
-  | "Int16Array"
-  | "Uint16Array"
-  | "Int32Array"
-  | "Uint32Array"
+  | "BigInt64Array"
+  | "BigUint64Array"
   | "Float32Array"
   | "Float64Array"
-  | "BigInt64Array"
-  | "BigUint64Array";
+  | "Int16Array"
+  | "Int32Array"
+  | "Int8Array"
+  | "Uint16Array"
+  | "Uint32Array"
+  | "Uint8Array"
+  | "Uint8ClampedArray";
 
 export type DataRefTypedArray =
-  | Int8Array
-  | Uint8Array
-  | Uint8ClampedArray
-  | Int16Array
-  | Uint16Array
-  | Int32Array
-  | Uint32Array
+  | BigInt64Array
+  | BigUint64Array
   | Float32Array
-  | Float64Array;
+  | Float64Array
+  | Int16Array
+  | Int32Array
+  | Int8Array
+  | Uint16Array
+  | Uint32Array
+  | Uint8Array
+  | Uint8ClampedArray;
 
 // Helper type for typed array constructors
 export type TypedArrayConstructor = {

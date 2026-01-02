@@ -2,7 +2,7 @@ import {
   type DataUrl,
   MIME_TYPES,
   type TypedArrayType,
-  type TypedArrayConstructor,
+  type DataRefTypedArray,
 } from "./types";
 
 // Utility functions for data URL handling
@@ -99,23 +99,20 @@ export const dataUrlToJson = async <T = unknown>(
   return JSON.parse(text);
 };
 
-export const dataUrlToTypedArray = async <T extends TypedArrayType>(
+export const dataUrlToTypedArray = async <T extends DataRefTypedArray>(
   dataUrl: DataUrl,
-  type: T,
   fetchOptions?: RequestInit
-): Promise<InstanceType<(typeof globalThis)[T]>> => {
+): Promise<T> => {
   const params = getParameters(dataUrl);
-  const arrayType = params.type as T;
+  const arrayType = params.type as TypedArrayType;
 
-  if (arrayType !== type) {
-    throw new Error(
-      `Data URL contains type ${arrayType} but ${type} was requested`
-    );
+  if (!arrayType) {
+    throw new Error("Data URL does not contain type parameter");
   }
 
   const buffer = await dataUrlToBuffer(dataUrl, fetchOptions);
-  const TypedArray = globalThis[type] as TypedArrayConstructor;
-  return new TypedArray(buffer);
+  const TypedArray = globalThis[arrayType];
+  return new TypedArray(buffer) as T;
 };
 
 // Update file handling to use async buffer conversion

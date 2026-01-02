@@ -1,4 +1,7 @@
-import { isDataRef as isDataRefV1 } from "../v1";
+import { isDataRef as isDataRefV1 } from '../v1';
+
+export * from "./dataref";
+export * from "./types";
 
 export const isDataRef = (value: any): boolean => {
   return (

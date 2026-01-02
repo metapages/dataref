@@ -22,7 +22,8 @@
   "homepage": "https://github.com/metapages/dataref/tree/main/docs#readme",
   "scripts": {
     "note": "echo 'use just. See README.md'",
-    "test": "vitest"
+    "test": "vitest --run",
+    "dev": "vitest"
   },
   "devDependencies": {
     "@rollup/plugin-typescript": "^12.1.1",
