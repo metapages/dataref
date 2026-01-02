@@ -427,7 +427,7 @@ describe("v2 DataRef - Basic Type Conversions", () => {
       };
 
       const result = await dereferenceDataRefs(input);
-      const resultArray = new Uint8Array(result.data);
+      const resultArray = new Uint8Array(result.data as unknown as ArrayBuffer);
       expect(resultArray).toEqual(new Uint8Array([10, 20, 30]));
     });
 
@@ -458,7 +458,7 @@ describe("v2 DataRef - Basic Type Conversions", () => {
       expect(result.data.count).toBe(2);
       expect(result.items[0]).toBe("regular");
       expect(result.items[1]).toBe("text content");
-      expect(result.items[2].key).toEqual({ nested: { value: 123 } });
+      expect((result.items[2] as any).key).toEqual({ nested: { value: 123 } });
     });
   });
 });

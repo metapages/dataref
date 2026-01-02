@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { DataRef, DataRefType } from "../v1/types";
+import type { DataRefBinary } from "../v1/types";
+import { DataRefType } from "../v1/types";
 import { isDataRef as isDataRefV1 } from "../v1/dataref";
 import {
   isDataUrl,
@@ -27,12 +28,12 @@ describe("v1 and v2 DataRef Compatibility", () => {
     });
 
     it("should detect v1 DataRef objects", () => {
-      const v1TextDataRef: DataRef = {
+      const v1TextDataRef: DataRefBinary<any> = {
         ref: DataRefType.utf8,
         value: "hello",
       };
 
-      const v1JsonDataRef: DataRef = {
+      const v1JsonDataRef: DataRefBinary<any> = {
         ref: DataRefType.json,
         value: { key: "value" },
       };
@@ -54,7 +55,7 @@ describe("v1 and v2 DataRef Compatibility", () => {
 
   describe("v1 to v2 conversion", () => {
     it("should convert v1 utf8 DataRef to v2 data URL", () => {
-      const v1Ref: DataRef = {
+      const v1Ref: DataRefBinary<any> = {
         ref: DataRefType.utf8,
         value: "Hello, World!",
       };
@@ -67,7 +68,7 @@ describe("v1 and v2 DataRef Compatibility", () => {
     });
 
     it("should convert v1 json DataRef to v2 data URL", () => {
-      const v1Ref: DataRef = {
+      const v1Ref: DataRefBinary<any> = {
         ref: DataRefType.json,
         value: { name: "John", age: 30 },
       };
@@ -84,7 +85,7 @@ describe("v1 and v2 DataRef Compatibility", () => {
       const originalData = new Uint8Array([1, 2, 3, 4, 5]);
       const base64String = btoa(String.fromCharCode(...originalData));
 
-      const v1Ref: DataRef = {
+      const v1Ref: DataRefBinary<any> = {
         ref: DataRefType.base64,
         value: base64String,
       };
@@ -111,7 +112,7 @@ describe("v1 and v2 DataRef Compatibility", () => {
 
   describe("dereferenceDataRefs should handle mixed v1 and v2 refs", () => {
     it("should dereference only v2 data URLs, not v1 objects", async () => {
-      const v1Ref: DataRef = {
+      const v1Ref: DataRefBinary<any> = {
         ref: DataRefType.utf8,
         value: "v1 text",
       };
@@ -137,7 +138,7 @@ describe("v1 and v2 DataRef Compatibility", () => {
     });
 
     it("should handle nested structures with mixed v1/v2 refs", async () => {
-      const v1Ref: DataRef = {
+      const v1Ref: DataRefBinary<any> = {
         ref: DataRefType.json,
         value: { nested: "v1 data" },
       };
@@ -169,7 +170,7 @@ describe("v1 and v2 DataRef Compatibility", () => {
 
   describe("v2 data URLs maintain advantages over v1", () => {
     it("v2 data URLs are unambiguous strings, not objects", () => {
-      const v1Ref: DataRef = {
+      const v1Ref: DataRefBinary<any> = {
         ref: DataRefType.utf8,
         value: "hello",
       };
@@ -225,7 +226,7 @@ describe("v1 and v2 DataRef Compatibility", () => {
         oldFormat: {
           ref: DataRefType.utf8,
           value: "This is v1 format data",
-        } as DataRef,
+        } as DataRefBinary<any>,
         metadata: "created with v1",
       };
 
@@ -254,7 +255,7 @@ describe("v1 and v2 DataRef Compatibility", () => {
 
     it("should allow gradual migration from v1 to v2", () => {
       // Start with v1 data
-      const v1Data: DataRef = {
+      const v1Data: DataRefBinary<any> = {
         ref: DataRefType.json,
         value: { user: "john", score: 100 },
       };
