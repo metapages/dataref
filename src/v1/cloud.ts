@@ -29,8 +29,6 @@ const defaultUpload = async (ref: DataRef, url:string, data: Uint8Array|ArrayBuf
     method: "PUT",
     body: new Uint8Array(data),
     // @ts-ignore: TS2353
-    method: "PUT",
-    // @ts-ignore: TS2353
     redirect: "follow",
     headers: { "Content-Type": getContentType(ref) },
   });
