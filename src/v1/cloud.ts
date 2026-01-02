@@ -27,7 +27,7 @@ export const utf8ToBuffer = (str: string): Uint8Array => {
 const defaultUpload = async (ref: DataRef, url:string, data: Uint8Array|ArrayBuffer) :Promise<string> => {
   const responseUpload = await fetch(url, {
     method: "PUT",
-    body: data,
+    body: new Uint8Array(data),
     // @ts-ignore: TS2353
     method: "PUT",
     // @ts-ignore: TS2353
@@ -55,7 +55,7 @@ export const copyLargeBlobToCloud = async (
 
   let maxDataLengthActual = opts.maxDataLength ?? maxDataLength;
 
-  const type: DataRefType = ref.ref;
+  const type = ref.type || "url";
   let uint8ArrayIfBig: Uint8Array|ArrayBuffer | undefined;
   // let contentType: string | undefined;
   switch (type) {
@@ -95,7 +95,7 @@ export const copyLargeBlobToCloud = async (
 
     const newRef: DataRef = {
       value: urlForDownload,
-      ref: DataRefType.url,
+      type: DataRefType.url,
       contentType: ref.contentType,
       sha256: sha256,
     };

@@ -17,7 +17,15 @@ const DataRefTypeKeys: string[] = Object.keys(DataRefType).filter((key) =>
 export const DataRefTypesSet = new Set(DataRefTypeKeys);
 export const DataRefTypeDefault = DataRefType.utf8;
 
-export type DataRef<T = string> = {
+export type DataRef = {
+  /* We want to be unambigous here */
+  type?: "base64" | "url" | "utf8" | "json" | "key";
+  value: any;
+  contentType?: string;
+  sha256?: string;
+};
+
+export type DataRefBinary<T = string> = {
   /* We want to be unambigous here */
   ref: DataRefType;
   value: T;
@@ -28,7 +36,7 @@ export type DataRef<T = string> = {
   created?: string;
 };
 
-export type DataRefSerialized = Omit<DataRef, "size"> & {
+export type DataRefSerialized = Omit<DataRefBinary, "size"> & {
   // constructor name, e.g. "Uint8Array" or "Blob"
   c: string;
   // required here, but optional in the parent type
