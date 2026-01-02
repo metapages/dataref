@@ -15,12 +15,21 @@ jobs:
   publish:
     # Can switch to ubuntu-latest but self-hosted is safer and faster
     name: Publish
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
         with:
           fetch-depth: '0'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.42.4'
 
       - name: publish module
         run: just publish
