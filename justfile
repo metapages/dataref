@@ -9,7 +9,6 @@ set dotenv-load    := true
 # library configuration
 ###########################################################################
 NPM_MODULE         := `cat package.json | jq -r .name`
-NPM_TOKEN          := env_var_or_default("NPM_TOKEN", "")
 tsc                := "./node_modules/typescript/bin/tsc"
 vite               := "NODE_OPTIONS='--max_old_space_size=16384' ./node_modules/vite/bin/vite.js"
 # minimal formatting, bold is very useful
@@ -80,7 +79,7 @@ dev: _ensure_node_modules watch
     npm view {{NPM_MODULE}} versions --json
 
 # If the version does not exist, publish the packages (metaframe+metapage)
-publish: _require_NPM_TOKEN _ensure_node_modules
+publish: _ensure_node_modules
     #!/usr/bin/env bash
     set -euo pipefail
     VERSION=`cat package.json | jq -r '.version'`
@@ -97,7 +96,6 @@ publish: _require_NPM_TOKEN _ensure_node_modules
     just build
     rm -rf dist/test
     echo "PUBLISHING npm version $VERSION"
-    echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc && \
     npm publish --access public .
     # git tag $VERSION
     # git push origin $VERSION
@@ -116,9 +114,6 @@ clean:
     @mkdir -p dist
     rm -rf dist/*
     just test/clean
-
-@_require_NPM_TOKEN:
-    if [ -z "$NPM_TOKEN" ]; then echo "Missing NPM_TOKEN"; exit 1; fi
 
 @_ensure_node_modules:
     if [ ! -d node_modules ]; then npm i; fi
