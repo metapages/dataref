@@ -1,16 +1,34 @@
 {
   "name": "@metapages/dataref",
-  "version": "0.6.2",
+  "version": "2.0.0",
   "author": "Dion Whitehead <dion@metapage.io>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/metapages/dataref.git"
   },
   "keywords": [
-    "dataref"
+    "dataref",
+    "data-url",
+    "dataurl",
+    "base64",
+    "typed-array",
+    "arraybuffer",
+    "binary",
+    "encode",
+    "decode",
+    "url-encoding",
+    "json",
+    "serialization"
   ],
   "main": "dist/index.js",
-  "exports": "./dist/index.js",
+  "module": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
   "files": [
     "dist",
     "src",
@@ -37,6 +55,7 @@
     "vitest": "^2.1.1"
   },
   "dependencies": {
-    "base64-arraybuffer": "^1.0.2"
+    "base64-arraybuffer": "^1.0.2",
+    "mutative": "^1.3.0"
   }
 }

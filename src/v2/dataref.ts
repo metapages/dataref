@@ -73,14 +73,35 @@ export const dataUrlToBuffer = async (
     return response.arrayBuffer();
   }
 
-  // Handle regular data URL
-  const base64 = dataUrl.split(",")[1];
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  // Parse the data URL
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex === -1) {
+    throw new Error("Invalid data URL format");
   }
-  return bytes.buffer;
+
+  const header = dataUrl.substring(0, commaIndex);
+  const data = dataUrl.substring(commaIndex + 1);
+
+  // Check if it's base64 encoded
+  const isBase64 = header.includes(";base64");
+
+  if (isBase64) {
+    // Handle base64-encoded data (including empty strings)
+    if (!data) {
+      return new ArrayBuffer(0);
+    }
+    const binaryString = atob(data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  } else {
+    // Handle URL-encoded data (for text/JSON, including empty strings)
+    const decodedString = data ? decodeURIComponent(data) : "";
+    const encoder = new TextEncoder();
+    return encoder.encode(decodedString).buffer;
+  }
 };
 
 export const dataUrlToText = async (
@@ -192,4 +213,99 @@ export const fetchDataUrlContent = async (
     throw new Error("Data URL does not contain a URL reference");
   }
   return urlToDataUrl(url, fetchOptions);
+};
+
+// Import mutative for efficient JSON traversal and modification
+import { create } from "mutative";
+
+/**
+ * Traverses a JSON object and converts any data ref strings (v2 data URLs)
+ * into their dereferenced data. Returns a new JSON object with all datarefs resolved.
+ *
+ * @param json - The JSON object to traverse
+ * @param fetchOptions - Optional fetch options for URL-based datarefs
+ * @returns A new JSON object with all datarefs dereferenced
+ */
+export const dereferenceDataRefs = async <T = any>(
+  json: T,
+  fetchOptions?: RequestInit
+): Promise<T> => {
+  // Track all promises for async dereferencing
+  const promises: Array<{
+    path: (string | number)[];
+    promise: Promise<any>;
+  }> = [];
+
+  // Helper function to traverse and collect promises
+  const collectPromises = (obj: any, path: (string | number)[] = []) => {
+    if (obj === null || obj === undefined) {
+      return;
+    }
+
+    if (typeof obj === "string" && isDataUrl(obj)) {
+      // Found a data URL, create a promise to dereference it
+      const promise = dereferenceDataUrl(obj, fetchOptions);
+      promises.push({ path: [...path], promise });
+    } else if (Array.isArray(obj)) {
+      obj.forEach((item, index) => {
+        collectPromises(item, [...path, index]);
+      });
+    } else if (typeof obj === "object") {
+      Object.keys(obj).forEach((key) => {
+        collectPromises(obj[key], [...path, key]);
+      });
+    }
+  };
+
+  // First pass: collect all promises
+  collectPromises(json);
+
+  // If no datarefs found, return original
+  if (promises.length === 0) {
+    return json;
+  }
+
+  // Wait for all promises to resolve
+  const results = await Promise.all(promises.map((p) => p.promise));
+
+  // Second pass: use mutative to update the JSON with resolved values
+  return create(json, (draft: any) => {
+    promises.forEach(({ path }, index) => {
+      let current = draft;
+      for (let i = 0; i < path.length - 1; i++) {
+        current = current[path[i]];
+      }
+      const lastKey = path[path.length - 1];
+      current[lastKey] = results[index];
+    });
+  });
+};
+
+/**
+ * Dereferences a single data URL to its actual value.
+ * Attempts to parse as JSON first, falls back to text, then buffer.
+ *
+ * @param dataUrl - The data URL to dereference
+ * @param fetchOptions - Optional fetch options for URL-based datarefs
+ * @returns The dereferenced value
+ */
+const dereferenceDataUrl = async (
+  dataUrl: DataUrl,
+  fetchOptions?: RequestInit
+): Promise<any> => {
+  const mimeType = getMimeType(dataUrl);
+  const params = getParameters(dataUrl);
+
+  // Handle different MIME types appropriately
+  if (mimeType === MIME_TYPES.JSON) {
+    return dataUrlToJson(dataUrl, fetchOptions);
+  } else if (mimeType === MIME_TYPES.TEXT) {
+    return dataUrlToText(dataUrl, fetchOptions);
+  } else if (mimeType === MIME_TYPES.OCTET_STREAM && params.type) {
+    // This is a typed array
+    return dataUrlToTypedArray(dataUrl, fetchOptions);
+  } else {
+    // For octet-stream and other binary types, return as ArrayBuffer
+    return dataUrlToBuffer(dataUrl, fetchOptions);
+  }
 };
