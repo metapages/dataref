@@ -1,5 +1,9 @@
-import { decodeBase64 } from "./base64";
-import { type DataRef, DataRefType, DataRefTypesSet } from "./types";
+import { decode as decodeBase64 } from 'base64-arraybuffer';
+
+import {
+  type DataRef,
+  DataRefType,
+} from './types';
 
 type FetchBlobFromKey = (
   key: String,
@@ -28,10 +32,24 @@ export const isDataRef = (value: any): boolean => {
   );
 };
 
+export const getContentType = (ref: DataRef): string => {
+  if (ref?.contentType) {
+    return ref.contentType;
+  }
+  switch (ref.type) {
+    case DataRefType.utf8:
+      return "text/plain";
+    case DataRefType.json:
+      return "application/json";
+    default:
+      return "application/octet-stream";
+  }
+};
+
 export const dataRefToBuffer = async (
   ref: DataRef,
   opts?: { fetchBlobFromKey?: FetchBlobFromKey; fetchOptions?: RequestInit }
-): Promise<Uint8Array> => {
+): Promise<Uint8Array|ArrayBuffer> => {
   let { fetchBlobFromKey, fetchOptions } = opts ?? {};
   const type = ref.type ?? DataRefType.url;
   switch (type) {
@@ -57,7 +75,7 @@ export const dataRefToBuffer = async (
       return new Uint8Array(arrayBufferFromKey);
     }
     default: // undefined assume DataRefType.Base64
-      throw `Not yet implemented: DataRef.type "${ref.type}" unknown`;
+      throw `Not yet implemented: DataRef.ref "${ref.type}" unknown`;
   }
 };
 
@@ -91,7 +109,7 @@ export const dataRefToFile = async (
         fetchOptions
       );
       name = name ?? (await sha256Buffer(bufferUrl));
-      return new File([bufferUrl], name, { type: "application/octet-stream" });
+      return new File([new Uint8Array(bufferUrl)], name, { type: "application/octet-stream" });
     case DataRefType.key: {
       const fetcher = fetchBlobFromKey ?? globalFetchBlobFromKey;
       if (!fetcher) {
@@ -101,17 +119,17 @@ export const dataRefToFile = async (
       }
       const bufferFromKey = await fetcher(ref.value, fetchOptions);
       name = name ?? (await sha256Buffer(bufferFromKey));
-      return new File([bufferFromKey], name, {
-        type: "application/octet-stream",
+      return new File([new Uint8Array(bufferFromKey)], name, {
+        type: ref?.contentType || "application/octet-stream",
       });
     }
     default:
-      throw `Not yet implemented: DataRef.type "${ref.type}" unknown`;
+      throw `Not yet implemented: DataRef.ref "${ref.type}" unknown`;
   }
 };
 
-export const sha256Buffer = async (buffer: Uint8Array): Promise<string> => {
-  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+export const sha256Buffer = async (buffer: Uint8Array|ArrayBuffer): Promise<string> => {
+  const hashBuffer = await crypto.subtle.digest("SHA-256", new Uint8Array(buffer));
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hashHex = hashArray
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -134,7 +152,7 @@ export const dataRefToDownloadLink = async (
 ): Promise<string> => {
   const buffer = await dataRefToBuffer(ref, opts);
   return URL.createObjectURL(
-    new Blob([buffer], { type: "application/octet-stream" })
+    new Blob([new Uint8Array(buffer)], { type: ref?.contentType || "application/octet-stream" })
   );
 };
 
