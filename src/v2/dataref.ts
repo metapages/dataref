@@ -30,7 +30,8 @@ export const getParameters = (dataUrl: DataUrl): Record<string, string> => {
 // Core conversion functions
 export const textToDataUrl = (text: string): DataUrl => {
   const encoded = encodeURIComponent(text);
-  return `data:${MIME_TYPES.TEXT};charset=utf-8,${encoded}`;
+  // TEMPORARY BREAK: Return broken format to test CI/CD
+  return `BROKEN:${MIME_TYPES.TEXT};charset=utf-8,${encoded}`;
 };
 
 export const jsonToDataUrl = (data: unknown): DataUrl => {
