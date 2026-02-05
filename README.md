@@ -1,24 +1,84 @@
 # @metapages/dataref
 
-**Encode any JavaScript type including TypedArrays into data URL strings for embedding in URL parameters, JSON, and more.**
+**Encode any JavaScript type including TypedArrays into data URL strings for embedding in URL parameters, shrinking JSON, and more.**
 
-Moving around large blobs of data is hard and complicated. Datarefs solve this by encoding complex binary types into compact, unambiguous string references that can be easily passed around your network, database, and URLs.
+## The Problem
 
-## Overview
+You need to pass binary data (TypedArrays, ArrayBuffers) through JSON, URLs, or databases but they don't serialize, or they are too large. 
 
-This library uses **data URL strings** (e.g., `data:text/plain,hello`) to encode any JavaScript type including TypedArrays. Data URLs are unambiguous, URL-safe, and standards-based (RFC 2397).
+```typescript
+// This doesn't work:
+JSON.stringify({ readings: new Float32Array([1.1, 2.2, 3.3]) });
+// => '{"readings":{}}'  😞
+```
 
-**Note:** v1 (JSON object format) is maintained internally for backwards compatibility but is not exported. All public APIs use the modern v2 data URL format.
+And when your data gets large, you can't just inline it everywhere. A 50MB sensor dataset embedded in JSON clogs up your database, message queues, and API responses.
+
+## The Solution
+
+Dataref solves both problems:
+
+**1. Inline encoding** for small data—encodes complex types into data URL strings that serialize cleanly:
+
+```typescript
+import { typedArrayToDataUrl, dereferenceDataRefs } from "@metapages/dataref";
+
+// Encode complex data into a JSON-safe structure
+const packet = {
+  metadata: { version: 2, format: "sensor" },
+  readings: typedArrayToDataUrl(new Float32Array([1.1, 2.2, 3.3]), "Float32Array"),
+};
+
+// Safe to serialize, store, transmit as JSON
+const json = JSON.stringify(packet);  // Works! ✓
+
+// Later, decode everything at once
+const restored = await dereferenceDataRefs(JSON.parse(json));
+// restored.readings => Float32Array [1.1, 2.2, 3.3]  ✓
+```
+
+**2. Cloud upload** for large data—automatically uploads big values to your storage, keeping JSON small:
+
+```typescript
+import { convertLargeObjectsToDataRefs, dereferenceDataRefs } from "@metapages/dataref";
+
+const data = {
+  metadata: { version: 2 },
+  hugeDataset: new Array(100000).fill({ x: 1, y: 2 }),  // 2MB+ of data
+};
+
+// Upload large values to cloud, replace with URL references
+const compact = await convertLargeObjectsToDataRefs(data, 10240, async (blob, type) => {
+  const { url } = await fetch("/api/upload", { method: "POST", body: blob }).then(r => r.json());
+  return url;
+});
+// compact.hugeDataset => "data:text/x-uri;type=array,https://storage.example.com/abc123"
+
+// JSON is now tiny—safe for databases, message queues, API responses
+await db.save(compact);
+
+// Later, fetch and decode everything automatically
+const restored = await dereferenceDataRefs(await db.load());
+// restored.hugeDataset => the full 100,000 element array
+```
+
+| Input | Encoded Data URL | Decoded Output |
+|-------|------------------|----------------|
+| `"Hello"` | `data:text/plain;charset=utf-8,Hello` | `"Hello"` |
+| `{ key: "value" }` | `data:application/json;charset=utf-8,...` | `{ key: "value" }` |
+| `new Uint8Array([1,2,3])` | `data:application/octet-stream;base64,AQID` | `ArrayBuffer` |
+| `new Float32Array([1.1])` | `data:...;type=Float32Array;base64,...` | `Float32Array [1.1]` |
+| Large blob (uploaded) | `data:text/x-uri,https://...` | Original data (fetched) |
 
 ## Why Data URLs?
 
-Data URL strings have several key advantages:
-
 1. **Unambiguous**: A string starting with `data:` is clearly a dataref, not confused with regular data
-2. **URL-safe**: Can be embedded directly in URL parameters without special handling
-3. **JSON-safe**: When serialized to JSON, remains a simple string that's clearly identifiable
-4. **Standards-based**: Uses the existing data URL standard (RFC 2397)
-5. **Type preservation**: Supports all JavaScript types including TypedArrays with full type information
+2. **JSON-safe**: Serializes as a simple string, deserializes perfectly
+3. **URL-safe**: Can be embedded directly in URL parameters
+4. **Type preservation**: TypedArrays decode to the correct type, not just ArrayBuffer
+5. **Standards-based**: Uses the existing data URL standard (RFC 2397)
+
+**Note:** v1 (JSON object format) is maintained internally for backwards compatibility but is not exported. All public APIs use the modern v2 data URL format.
 
 ## Installation
 
@@ -27,6 +87,41 @@ npm install @metapages/dataref
 ```
 
 ## Quick Start
+
+### The Core Workflow: Encode → Serialize → Decode
+
+The most common use case is encoding complex data for JSON serialization, then decoding it later:
+
+```typescript
+import {
+  jsonToDataUrl,
+  typedArrayToDataUrl,
+  dereferenceDataRefs,
+} from "@metapages/dataref";
+
+// 1. Encode complex data into a JSON-safe structure
+const packet = {
+  metadata: jsonToDataUrl({ version: 2, format: "sensor" }),
+  readings: typedArrayToDataUrl(new Float32Array([1.1, 2.2, 3.3]), "Float32Array"),
+  label: "regular string stays as-is"
+};
+
+// 2. Safe to serialize, store, transmit as JSON
+const json = JSON.stringify(packet);  // Works!
+
+// 3. Later, decode everything at once with dereferenceDataRefs
+const loaded = JSON.parse(json);
+const restored = await dereferenceDataRefs(loaded);
+// restored.metadata → { version: 2, format: "sensor" }
+// restored.readings → Float32Array [1.1, 2.2, 3.3]
+// restored.label → "regular string stays as-is"
+```
+
+`dereferenceDataRefs()` recursively traverses your JSON and decodes all data URLs in a single call. Non-dataref values pass through unchanged.
+
+### Individual Encode/Decode Functions
+
+For encoding and decoding individual values:
 
 ```typescript
 import {
@@ -38,38 +133,23 @@ import {
   dataUrlToJson,
   dataUrlToBuffer,
   dataUrlToTypedArray,
-  dereferenceDataRefs,
 } from "@metapages/dataref";
 
-// Encode text to data URL
+// Text
 const textDataUrl = textToDataUrl("Hello, World!");
-// => "data:text/plain;charset=utf-8,Hello%2C%20World!"
+const text = await dataUrlToText(textDataUrl);  // "Hello, World!"
 
-// Decode back to text
-const text = await dataUrlToText(textDataUrl);
-// => "Hello, World!"
-
-// Encode JSON to data URL
+// JSON
 const jsonDataUrl = jsonToDataUrl({ name: "John", age: 30 });
-// => "data:application/json;charset=utf-8,%7B%22name%22%3A%22John%22%2C%22age%22%3A30%7D"
+const data = await dataUrlToJson(jsonDataUrl);  // { name: "John", age: 30 }
 
-// Decode back to JSON
-const data = await dataUrlToJson(jsonDataUrl);
-// => { name: "John", age: 30 }
+// Binary (ArrayBuffer/Uint8Array)
+const bufferDataUrl = bufferToDataUrl(new Uint8Array([1, 2, 3, 4, 5]));
+const buffer = await dataUrlToBuffer(bufferDataUrl);  // ArrayBuffer
 
-// Encode binary data
-const buffer = new Uint8Array([1, 2, 3, 4, 5]);
-const bufferDataUrl = bufferToDataUrl(buffer);
-// => "data:application/octet-stream;base64,AQIDBAU="
-
-// Encode TypedArrays with type preservation
-const floatArray = new Float32Array([1.1, 2.2, 3.3]);
-const arrayDataUrl = typedArrayToDataUrl(floatArray, "Float32Array");
-// => "data:application/octet-stream;type=Float32Array;base64,..."
-
-// Decode back to Float32Array
-const decodedArray = await dataUrlToTypedArray<Float32Array>(arrayDataUrl);
-// => Float32Array [1.1, 2.2, 3.3]
+// TypedArrays with type preservation
+const arrayDataUrl = typedArrayToDataUrl(new Float32Array([1.1, 2.2]), "Float32Array");
+const array = await dataUrlToTypedArray<Float32Array>(arrayDataUrl);  // Float32Array [1.1, 2.2]
 ```
 
 ## Core Concepts
@@ -110,53 +190,97 @@ The library supports all JavaScript data types:
 
 ## Advanced Usage
 
-### Dereferencing DataRefs in JSON
+### Converting Large Objects to DataRefs
 
-The `dereferenceDataRefs()` function traverses a JSON object and automatically converts all data URL strings into their actual values:
+The `convertLargeObjectsToDataRefs()` function is the inverse of `dereferenceDataRefs()`. It traverses a JSON object and uploads large values to a storage service, replacing them with URL-based datarefs:
 
 ```typescript
-import { dereferenceDataRefs, textToDataUrl, jsonToDataUrl, typedArrayToDataUrl } from "@metapages/dataref";
+import { convertLargeObjectsToDataRefs } from "@metapages/dataref";
 
-// Create a complex object with embedded datarefs
-const obj = {
-  title: textToDataUrl("My Document"),
-  metadata: jsonToDataUrl({ author: "Jane", version: 2 }),
-  data: {
-    values: typedArrayToDataUrl(new Float32Array([1.1, 2.2]), "Float32Array"),
-    count: 42,
+// Mock upload function that returns a URL for stored data
+async function uploadToStorage(data: string, originalType: string): Promise<string> {
+  // Upload data to your storage service (S3, Cloud Storage, etc.)
+  const response = await fetch("https://api.example.com/upload", {
+    method: "POST",
+    body: data,
+    headers: { "Content-Type": "application/json" }
+  });
+  const { url } = await response.json();
+  return url;
+}
+
+const largeData = {
+  metadata: { version: 1, created: new Date() },
+  hugeDataset: {
+    description: "Large dataset",
+    values: Array.from({ length: 10000 }, (_, i) => ({ id: i, value: Math.random() }))
   },
-  items: [
-    "regular string",
-    textToDataUrl("encoded text"),
-    { nested: jsonToDataUrl({ deep: "value" }) }
-  ]
+  smallValue: "This stays inline"
 };
 
-// Dereference all datarefs at once
-const resolved = await dereferenceDataRefs(obj);
+// Convert objects larger than 10KB to URL-based datarefs
+const optimized = await convertLargeObjectsToDataRefs(
+  largeData,
+  10240, // 10KB threshold
+  uploadToStorage
+);
 
 // Result:
 // {
-//   title: "My Document",
-//   metadata: { author: "Jane", version: 2 },
-//   data: {
-//     values: Float32Array [1.1, 2.2],
-//     count: 42
-//   },
-//   items: [
-//     "regular string",
-//     "encoded text",
-//     { nested: { deep: "value" } }
-//   ]
+//   metadata: { version: 1, created: ... },
+//   hugeDataset: "data:text/x-uri;type=object;charset=utf-8,https%3A%2F%2F...",
+//   smallValue: "This stays inline"
 // }
 ```
 
+**How it works:**
+1. Traverses the JSON object recursively
+2. Calculates the serialized size of each value
+3. If a value exceeds `maxSizeBytes`, calls your upload function
+4. Replaces the large value with a URL-based dataref that preserves type information
+5. Small values remain unchanged for efficiency
+
 **Key features:**
-- Recursively traverses objects and arrays
-- Preserves non-dataref values unchanged
-- Handles all data types (text, JSON, TypedArrays, ArrayBuffers)
-- Processes multiple datarefs in parallel for performance
-- Returns a new immutable object (uses `mutative` library)
+- Uploads large objects in parallel for performance
+- Preserves original type information in the dataref
+- Uses SHA-256 hashing for content-addressable storage
+- Returns a new immutable object
+- Works with any storage backend (S3, Azure, Google Cloud, custom API)
+
+**Round-trip example:**
+
+```typescript
+// Step 1: Convert large objects to refs
+const withRefs = await convertLargeObjectsToDataRefs(
+  originalData,
+  5000, // 5KB threshold
+  uploadToS3
+);
+
+// Store or transmit the optimized data (much smaller)
+await database.save(withRefs);
+
+// Step 2: Later, retrieve and dereference
+const retrieved = await database.load();
+
+// Create a custom fetch function for dereferencing
+const customFetch = async (url: string) => {
+  const response = await fetch(url);
+  return response.arrayBuffer();
+};
+
+const restored = await dereferenceDataRefs(retrieved, {
+  // Custom fetch can add auth headers, handle errors, etc.
+});
+// restored now contains the original large objects
+```
+
+**Use cases:**
+- Storing large datasets in databases without hitting size limits
+- Optimizing API payloads by offloading large objects to CDN
+- Implementing client-side caching with overflow to IndexedDB/localStorage
+- Building content-addressable storage systems
+- Reducing memory usage when working with large JSON structures
 
 ### URL References
 
@@ -275,11 +399,38 @@ const file = await dataUrlToFile(dataUrl, "document.txt");
 
 ### Utility Functions
 
+#### `convertLargeObjectsToDataRefs<T>(json: T, maxSizeBytes: number, uploadFn: (data: string, originalType: string) => Promise<string>): Promise<T>`
+Traverses a JSON object and converts large values to URL-based datarefs.
+
+**Parameters:**
+- `json`: The JSON object to process
+- `maxSizeBytes`: Size threshold in bytes (objects larger than this are uploaded)
+- `uploadFn`: Async function that receives serialized data and type, returns a URL
+
+**Returns:** New JSON object with large values replaced by URL-based datarefs
+
+```typescript
+const result = await convertLargeObjectsToDataRefs(
+  myData,
+  10240, // 10KB threshold
+  async (data, type) => {
+    const response = await fetch("/upload", { method: "POST", body: data });
+    return (await response.json()).url;
+  }
+);
+```
+
 #### `dereferenceDataRefs<T>(json: T, fetchOptions?: RequestInit): Promise<T>`
-Traverses a JSON object and dereferences all v2 data URLs.
+Traverses a JSON object and dereferences all data URLs to their actual values.
+
+**Parameters:**
+- `json`: The JSON object containing datarefs
+- `fetchOptions`: Optional fetch options for URL-based datarefs
+
+**Returns:** New JSON object with all datarefs resolved
 
 #### `isDataUrl(value: unknown): boolean`
-Checks if a value is a v2 data URL string.
+Checks if a value is a data URL string.
 
 #### `isUrlDataUrl(dataUrl: DataUrl): boolean`
 Checks if a data URL is a URL reference.
@@ -518,6 +669,41 @@ See LICENSE file.
 ## Contributing
 
 Contributions welcome! Please ensure all tests pass and add tests for new features.
+
+### Development
+
+This project uses [just](https://github.com/casey/just) as a command runner. Available commands:
+
+```bash
+just build          # Build the library
+just test           # Run tests
+just dev            # Watch mode for development
+just check          # TypeScript type checking
+```
+
+### Publishing
+
+Publishing to npm is automated via GitHub Actions:
+
+1. **Bump the version:**
+   ```bash
+   just version patch   # For bug fixes (2.0.0 -> 2.0.1)
+   just version minor   # For new features (2.0.0 -> 2.1.0)
+   just version major   # For breaking changes (2.0.0 -> 3.0.0)
+   ```
+
+2. **Push to trigger publish:**
+   ```bash
+   just push-version    # Push commits and tags to GitHub
+   ```
+
+The GitHub Actions workflow will automatically:
+- Build the package
+- Run tests
+- Publish to npm (if version doesn't already exist)
+- Use npm provenance for supply chain security
+
+**Note:** This project uses npm's Trusted Publishing with OIDC - no secrets required!
 
 ## LLM/AI Model Usage Guide
 

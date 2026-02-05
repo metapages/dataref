@@ -41,7 +41,8 @@
   "scripts": {
     "note": "echo 'use just. See README.md'",
     "test": "vitest --run",
-    "dev": "vitest"
+    "dev": "vitest",
+    "build": "vite build"
   },
   "devDependencies": {
     "@rollup/plugin-typescript": "^12.1.1",

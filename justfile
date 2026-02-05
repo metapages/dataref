@@ -78,6 +78,33 @@ dev: _ensure_node_modules watch
 @list:
     npm view {{NPM_MODULE}} versions --json
 
+# Bump version (patch|minor|major|<version>), commit, tag, and push to trigger publish
+version bump="patch":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Ensure we're on a clean working tree
+    if ! git diff-index --quiet HEAD --; then
+        echo "❌ Working directory is not clean. Commit or stash changes first."
+        exit 1
+    fi
+    # Bump version in package.json
+    npm version {{bump}} --no-git-tag-version
+    VERSION=`cat package.json | jq -r '.version'`
+    # Commit and tag
+    git add package.json
+    git commit -m "Bump version to $VERSION"
+    git tag "v$VERSION"
+    echo "✅ Version bumped to $VERSION"
+    echo "👉 Push with: git push && git push --tags"
+    echo "   Or: just push-version"
+
+# Push version tag to trigger publish workflow
+push-version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git push && git push --tags
+    echo "✅ Pushed version tag. Check GitHub Actions for publish status."
+
 # If the version does not exist, publish the packages (metaframe+metapage)
 publish: _ensure_node_modules
     #!/usr/bin/env bash
@@ -96,7 +123,7 @@ publish: _ensure_node_modules
     just build
     rm -rf dist/test
     echo "PUBLISHING npm version $VERSION"
-    npm publish --access public .
+    npm publish --access public --provenance .
     # git tag $VERSION
     # git push origin $VERSION
 

@@ -226,6 +226,30 @@ describe("v2 DataRef - Basic Type Conversions", () => {
         await dataUrlToTypedArray<Uint8ClampedArray>(dataUrl);
       expect(decodedArray).toEqual(originalArray);
     });
+
+    it("should round-trip Float32Array through URL reference with type preservation", async () => {
+      // Step 1: Create original Float32Array
+      const originalArray = new Float32Array([1.1, 2.2, 3.3, 4.4, 5.5]);
+
+      // Step 2: Upload as binary (simulate upload to storage)
+      const binaryDataUrl = typedArrayToDataUrl(originalArray, "Float32Array");
+
+      // Verify it has the type parameter
+      expect(binaryDataUrl).toContain("type=Float32Array");
+
+      // Step 3: Download and decode back to Float32Array
+      const downloadedArray = await dataUrlToTypedArray<Float32Array>(binaryDataUrl);
+
+      // Step 4: Verify the downloaded array matches the original
+      expect(downloadedArray.constructor.name).toBe("Float32Array");
+      expect(downloadedArray.length).toBe(originalArray.length);
+      for (let i = 0; i < originalArray.length; i++) {
+        expect(downloadedArray[i]).toBeCloseTo(originalArray[i]);
+      }
+
+      // Verify they're exactly equal
+      expect(downloadedArray).toEqual(originalArray);
+    });
   });
 
   describe("URL handling", () => {
