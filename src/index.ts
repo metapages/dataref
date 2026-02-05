@@ -2,11 +2,16 @@
 // v1 is kept internal for backwards compatibility only
 
 export {
+  // Primary API (recommended for most use cases)
+  serializeDataRefs,
+  deserializeDataRefs,
+
   // Core encoding functions
   textToDataUrl,
   jsonToDataUrl,
   bufferToDataUrl,
   typedArrayToDataUrl,
+  blobToDataUrl,
   urlToDataUrl,
   fileToDataUrl,
 
@@ -15,6 +20,7 @@ export {
   dataUrlToJson,
   dataUrlToBuffer,
   dataUrlToTypedArray,
+  dataUrlToBlob,
   dataUrlToUrl,
   dataUrlToFile,
 
@@ -33,6 +39,8 @@ export {
   type DataUrl,
   type TypedArrayType,
   type DataRefTypedArray,
+  type SerializeOptions,
+  type DeserializeOptions,
   MIME_TYPES,
 } from "./v2/types";
 

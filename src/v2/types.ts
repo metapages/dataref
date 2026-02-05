@@ -45,3 +45,19 @@ export type TypedArrayConstructor = {
     (typeof globalThis)[K]
   >;
 }[TypedArrayType];
+
+// Options for serialize function
+export interface SerializeOptions {
+  uploadFn?: (data: Blob | ArrayBuffer, metadata: {
+    type: string;
+    size: number;
+    mimeType?: string;
+  }) => Promise<string>;
+  maxSizeBytes?: number; // If provided, objects > size get uploaded
+}
+
+// Options for deserialize function
+export interface DeserializeOptions {
+  fetchOptions?: RequestInit; // For URL-based datarefs
+  downloadFn?: (url: string) => Promise<ArrayBuffer>; // Custom download logic
+}

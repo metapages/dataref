@@ -55,6 +55,14 @@ export const typedArrayToDataUrl = <T extends TypedArrayType>(
   return `data:${MIME_TYPES.TYPED_ARRAY}${type};base64,${base64}`;
 };
 
+export const blobToDataUrl = async (blob: Blob): Promise<DataUrl> => {
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const base64 = btoa(String.fromCharCode(...bytes));
+  const mimeType = blob.type || MIME_TYPES.OCTET_STREAM;
+  return `data:${mimeType};base64,${base64}`;
+};
+
 // Update core conversion functions to handle URLs
 export const dataUrlToBuffer = async (
   dataUrl: DataUrl,
@@ -134,6 +142,15 @@ export const dataUrlToTypedArray = async <T extends DataRefTypedArray>(
   const buffer = await dataUrlToBuffer(dataUrl, fetchOptions);
   const TypedArray = globalThis[arrayType];
   return new TypedArray(buffer) as T;
+};
+
+export const dataUrlToBlob = async (
+  dataUrl: DataUrl,
+  fetchOptions?: RequestInit
+): Promise<Blob> => {
+  const mimeType = getMimeType(dataUrl);
+  const buffer = await dataUrlToBuffer(dataUrl, fetchOptions);
+  return new Blob([buffer], { type: mimeType });
 };
 
 // Update file handling to use async buffer conversion
@@ -217,6 +234,194 @@ export const fetchDataUrlContent = async (
 
 // Import mutative for efficient JSON traversal and modification
 import { create } from "mutative";
+import type { SerializeOptions, DeserializeOptions } from "./types";
+
+/**
+ * Primary serialize function that converts all binary types in a JSON object to dataref strings.
+ *
+ * Automatically converts:
+ * - TypedArrays (Int8Array, Uint8Array, Float32Array, etc.) → dataref strings
+ * - ArrayBuffer → dataref strings
+ * - Blob → dataref strings
+ * - File → dataref strings
+ * - Regular data (strings, numbers, objects, arrays) → unchanged
+ *
+ * If uploadFn and maxSizeBytes are provided, binary objects exceeding the size threshold
+ * will be uploaded and replaced with URL-based datarefs.
+ *
+ * @param json - The JSON object to serialize
+ * @param options - Optional configuration for upload behavior
+ * @returns A new JSON object with binary types converted to datarefs
+ */
+export const serializeDataRefs = async <T = any>(
+  json: T,
+  options?: SerializeOptions
+): Promise<T> => {
+  const { uploadFn, maxSizeBytes } = options || {};
+
+  // Track all async conversions
+  const promises: Array<{
+    path: (string | number)[];
+    promise: Promise<string>;
+  }> = [];
+
+  // Helper to check if value is a binary type
+  const isBinaryType = (value: any): boolean => {
+    return (
+      value instanceof ArrayBuffer ||
+      ArrayBuffer.isView(value) ||
+      value instanceof Blob ||
+      (typeof File !== "undefined" && value instanceof File)
+    );
+  };
+
+  // Helper to get size of binary data
+  const getBinarySize = (value: any): number => {
+    if (value instanceof ArrayBuffer) {
+      return value.byteLength;
+    } else if (ArrayBuffer.isView(value)) {
+      return value.byteLength;
+    } else if (value instanceof Blob) {
+      return value.size;
+    }
+    return 0;
+  };
+
+  // Helper to get type name for binary data
+  const getBinaryTypeName = (value: any): string => {
+    if (value instanceof File) return "File";
+    if (value instanceof Blob) return "Blob";
+    if (value instanceof ArrayBuffer) return "ArrayBuffer";
+    if (ArrayBuffer.isView(value)) return value.constructor.name;
+    return "unknown";
+  };
+
+  // Helper to convert binary to dataref string
+  const convertBinaryToDataRef = async (value: any): Promise<string> => {
+    if (value instanceof File) {
+      return fileToDataUrl(value);
+    } else if (value instanceof Blob) {
+      // Add type=Blob parameter to distinguish from plain ArrayBuffer
+      const dataUrl = await blobToDataUrl(value);
+      // Insert type parameter after MIME type
+      const commaIndex = dataUrl.indexOf(",");
+      const header = dataUrl.substring(0, commaIndex);
+      const data = dataUrl.substring(commaIndex);
+      return `${header};type=Blob${data}`;
+    } else if (value instanceof ArrayBuffer) {
+      // Add type=ArrayBuffer parameter to distinguish from Blob
+      const dataUrl = bufferToDataUrl(value);
+      const commaIndex = dataUrl.indexOf(",");
+      const header = dataUrl.substring(0, commaIndex);
+      const data = dataUrl.substring(commaIndex);
+      return `${header};type=ArrayBuffer${data}`;
+    } else if (ArrayBuffer.isView(value)) {
+      // Typed array
+      const typeName = value.constructor.name as TypedArrayType;
+      return typedArrayToDataUrl(value as any, typeName);
+    }
+    throw new Error(`Unsupported binary type: ${typeof value}`);
+  };
+
+  // Helper to upload binary data
+  const uploadBinary = async (value: any): Promise<string> => {
+    if (!uploadFn) {
+      throw new Error("Upload function not provided");
+    }
+
+    const size = getBinarySize(value);
+    const typeName = getBinaryTypeName(value);
+    const mimeType = value instanceof Blob ? value.type : undefined;
+
+    // Convert to Blob or ArrayBuffer for upload
+    let uploadData: Blob | ArrayBuffer;
+    if (value instanceof Blob) {
+      uploadData = value;
+    } else if (value instanceof ArrayBuffer) {
+      uploadData = value;
+    } else if (ArrayBuffer.isView(value)) {
+      uploadData = value.buffer;
+    } else {
+      throw new Error(`Cannot upload type: ${typeName}`);
+    }
+
+    const url = await uploadFn(uploadData, { type: typeName, size, mimeType });
+
+    // Create a URL-based dataref with type information
+    const encodedUrl = encodeURIComponent(url);
+    return `data:${MIME_TYPES.URI};type=${typeName}${mimeType ? `;mimeType=${mimeType}` : ""};charset=utf-8,${encodedUrl}`;
+  };
+
+  // Traverse and collect conversion promises
+  const collectConversions = (obj: any, path: (string | number)[] = []) => {
+    if (obj === null || obj === undefined) {
+      return;
+    }
+
+    // Check if this is a binary type
+    if (isBinaryType(obj)) {
+      const size = getBinarySize(obj);
+      let promise: Promise<string>;
+
+      // Should we upload this?
+      if (uploadFn && maxSizeBytes && size > maxSizeBytes) {
+        promise = uploadBinary(obj);
+      } else {
+        promise = convertBinaryToDataRef(obj);
+      }
+
+      promises.push({ path: [...path], promise });
+      return; // Don't traverse into binary types
+    }
+
+    // Don't process existing data URLs
+    if (typeof obj === "string" && isDataUrl(obj)) {
+      return;
+    }
+
+    // Check if this is a primitive type
+    if (typeof obj !== "object") {
+      return;
+    }
+
+    // Traverse children
+    if (Array.isArray(obj)) {
+      obj.forEach((item, index) => {
+        collectConversions(item, [...path, index]);
+      });
+    } else {
+      Object.keys(obj).forEach((key) => {
+        collectConversions(obj[key], [...path, key]);
+      });
+    }
+  };
+
+  // First pass: collect all conversion promises
+  collectConversions(json);
+
+  // If nothing to convert, return original
+  if (promises.length === 0) {
+    return json;
+  }
+
+  // Wait for all conversions to complete
+  const results = await Promise.all(promises.map((p) => p.promise));
+
+  // Second pass: use mutative to update the JSON with datarefs
+  return create(json, (draft: any) => {
+    promises.forEach(({ path }, index) => {
+      const dataRef = results[index];
+
+      // Navigate to the parent and set the value
+      let current = draft;
+      for (let i = 0; i < path.length - 1; i++) {
+        current = current[path[i]];
+      }
+      const lastKey = path[path.length - 1];
+      current[lastKey] = dataRef;
+    });
+  });
+};
 
 /**
  * Converts large objects in a JSON structure to data URL references.
@@ -397,7 +602,7 @@ export const dereferenceDataRefs = async <T = any>(
 
 /**
  * Dereferences a single data URL to its actual value.
- * Attempts to parse as JSON first, falls back to text, then buffer.
+ * Determines the appropriate type based on MIME type and parameters.
  *
  * @param dataUrl - The data URL to dereference
  * @param fetchOptions - Optional fetch options for URL-based datarefs
@@ -410,16 +615,168 @@ const dereferenceDataUrl = async (
   const mimeType = getMimeType(dataUrl);
   const params = getParameters(dataUrl);
 
-  // Handle different MIME types appropriately
+  // Handle URL-based datarefs
+  if (mimeType === MIME_TYPES.URI && params.type) {
+    // This is an uploaded binary, download it first
+    const url = dataUrlToUrl(dataUrl);
+    if (!url) {
+      throw new Error("Invalid URL dataref");
+    }
+
+    const response = await fetch(url, { ...fetchOptions, redirect: "follow" });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+    }
+
+    const buffer = await response.arrayBuffer();
+
+    // Convert based on original type
+    const typeName = params.type;
+    const mimeTypeParam = params.mimeType;
+
+    if (typeName === "Blob") {
+      return new Blob([buffer], { type: mimeTypeParam || MIME_TYPES.OCTET_STREAM });
+    } else if (typeName === "File") {
+      const fileName = params.name || "downloaded-file";
+      return new File([buffer], fileName, { type: mimeTypeParam || MIME_TYPES.OCTET_STREAM });
+    } else if (typeName === "ArrayBuffer") {
+      return buffer;
+    } else {
+      // TypedArray
+      const TypedArray = globalThis[typeName as TypedArrayType];
+      if (TypedArray) {
+        return new TypedArray(buffer);
+      }
+      return buffer;
+    }
+  }
+
+  // Check type parameter first (most specific)
+  if (params.type === "ArrayBuffer") {
+    // Explicitly marked as ArrayBuffer
+    return dataUrlToBuffer(dataUrl, fetchOptions);
+  } else if (params.type === "Blob") {
+    // Explicitly marked as Blob
+    return dataUrlToBlob(dataUrl, fetchOptions);
+  } else if (params.type && mimeType === MIME_TYPES.OCTET_STREAM) {
+    // This is a typed array
+    return dataUrlToTypedArray(dataUrl, fetchOptions);
+  }
+
+  // Then handle MIME types
   if (mimeType === MIME_TYPES.JSON) {
     return dataUrlToJson(dataUrl, fetchOptions);
   } else if (mimeType === MIME_TYPES.TEXT) {
     return dataUrlToText(dataUrl, fetchOptions);
-  } else if (mimeType === MIME_TYPES.OCTET_STREAM && params.type) {
-    // This is a typed array
-    return dataUrlToTypedArray(dataUrl, fetchOptions);
+  } else if (mimeType === MIME_TYPES.OCTET_STREAM) {
+    // Plain ArrayBuffer (no type parameter)
+    return dataUrlToBuffer(dataUrl, fetchOptions);
   } else {
-    // For octet-stream and other binary types, return as ArrayBuffer
+    // For other binary types, return as ArrayBuffer by default
     return dataUrlToBuffer(dataUrl, fetchOptions);
   }
+};
+
+/**
+ * Primary deserialize function that converts all dataref strings in a JSON object
+ * back to their original binary types.
+ *
+ * Alias for dereferenceDataRefs with support for custom download function.
+ *
+ * @param json - The JSON object to deserialize
+ * @param options - Optional configuration for fetch/download behavior
+ * @returns A new JSON object with all datarefs converted back to original types
+ */
+export const deserializeDataRefs = async <T = any>(
+  json: T,
+  options?: DeserializeOptions
+): Promise<T> => {
+  const { fetchOptions, downloadFn } = options || {};
+
+  // If custom download function provided, we need to handle it differently
+  if (downloadFn) {
+    // Track all promises for async dereferencing
+    const promises: Array<{
+      path: (string | number)[];
+      promise: Promise<any>;
+    }> = [];
+
+    // Helper function to traverse and collect promises
+    const collectPromises = (obj: any, path: (string | number)[] = []) => {
+      if (obj === null || obj === undefined) {
+        return;
+      }
+
+      if (typeof obj === "string" && isDataUrl(obj)) {
+        // Check if this is a URL dataref
+        if (isUrlDataUrl(obj)) {
+          const url = dataUrlToUrl(obj);
+          const params = getParameters(obj);
+          if (url) {
+            // Use custom download function
+            const promise = downloadFn(url).then((buffer) => {
+              // Convert based on original type
+              const typeName = params.type;
+              const mimeTypeParam = params.mimeType;
+
+              if (typeName === "Blob") {
+                return new Blob([buffer], { type: mimeTypeParam || MIME_TYPES.OCTET_STREAM });
+              } else if (typeName === "File") {
+                const fileName = params.name || "downloaded-file";
+                return new File([buffer], fileName, { type: mimeTypeParam || MIME_TYPES.OCTET_STREAM });
+              } else if (typeName === "ArrayBuffer") {
+                return buffer;
+              } else {
+                // TypedArray
+                const TypedArray = globalThis[typeName as TypedArrayType];
+                if (TypedArray) {
+                  return new TypedArray(buffer);
+                }
+                return buffer;
+              }
+            });
+            promises.push({ path: [...path], promise });
+            return;
+          }
+        }
+        // Regular dataref, use normal dereferencing
+        const promise = dereferenceDataUrl(obj, fetchOptions);
+        promises.push({ path: [...path], promise });
+      } else if (Array.isArray(obj)) {
+        obj.forEach((item, index) => {
+          collectPromises(item, [...path, index]);
+        });
+      } else if (typeof obj === "object") {
+        Object.keys(obj).forEach((key) => {
+          collectPromises(obj[key], [...path, key]);
+        });
+      }
+    };
+
+    // First pass: collect all promises
+    collectPromises(json);
+
+    // If no datarefs found, return original
+    if (promises.length === 0) {
+      return json;
+    }
+
+    // Wait for all promises to resolve
+    const results = await Promise.all(promises.map((p) => p.promise));
+
+    // Second pass: use mutative to update the JSON with resolved values
+    return create(json, (draft: any) => {
+      promises.forEach(({ path }, index) => {
+        let current = draft;
+        for (let i = 0; i < path.length - 1; i++) {
+          current = current[path[i]];
+        }
+        const lastKey = path[path.length - 1];
+        current[lastKey] = results[index];
+      });
+    });
+  }
+
+  // No custom download function, use default dereferencing
+  return dereferenceDataRefs(json, fetchOptions);
 };
