@@ -102,13 +102,7 @@ version bump="patch":
     git commit -m "Bump version to $VERSION"
     git tag "v$VERSION"
     echo "✅ Version bumped to $VERSION"
-    echo "👉 Push with: git push && git push --tags"
-    echo "   Or: just push-version"
-
-# Push version tag to trigger publish workflow
-push-version:
-    #!/usr/bin/env bash
-    set -euo pipefail
+    # Push to trigger publish workflow
     git push && git push --tags
     echo "✅ Pushed version tag. Check GitHub Actions for publish status."
 
