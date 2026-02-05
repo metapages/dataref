@@ -20,6 +20,7 @@ export {
 
   // Utility functions
   dereferenceDataRefs,
+  convertLargeObjectsToDataRefs,
   isDataUrl,
   isUrlDataUrl,
   getMimeType,

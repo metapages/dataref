@@ -219,6 +219,120 @@ export const fetchDataUrlContent = async (
 import { create } from "mutative";
 
 /**
+ * Converts large objects in a JSON structure to data URL references.
+ * Objects exceeding the size threshold are uploaded using the provided function
+ * and replaced with URL-based datarefs that preserve type information.
+ *
+ * @param json - The JSON object to process
+ * @param maxSizeBytes - Size threshold in bytes (objects larger than this are converted to refs)
+ * @param uploadFn - Async function that takes serialized data and original type, returns a URL
+ * @returns A new JSON object with large values replaced by data URL references
+ */
+export const convertLargeObjectsToDataRefs = async <T = any>(
+  json: T,
+  maxSizeBytes: number,
+  uploadFn: (data: string, originalType: string) => Promise<string>
+): Promise<T> => {
+  // Track all promises for async uploads
+  const promises: Array<{
+    path: (string | number)[];
+    promise: Promise<{ url: string; originalType: string }>;
+  }> = [];
+
+  // Helper to get size of a value
+  const getSize = (value: any): number => {
+    return new TextEncoder().encode(JSON.stringify(value)).length;
+  };
+
+  // Helper to determine the type of value
+  const getValueType = (value: any): string => {
+    if (value === null) return "null";
+    if (Array.isArray(value)) return "array";
+    if (value instanceof Uint8Array) return "Uint8Array";
+    if (value instanceof ArrayBuffer) return "ArrayBuffer";
+    if (ArrayBuffer.isView(value)) {
+      return value.constructor.name;
+    }
+    return typeof value;
+  };
+
+  // Helper function to traverse and collect upload promises
+  const collectUploads = (obj: any, path: (string | number)[] = []) => {
+    if (obj === null || obj === undefined) {
+      return;
+    }
+
+    // Check if this is a primitive type
+    if (typeof obj !== "object") {
+      return;
+    }
+
+    // Don't process data URLs themselves
+    if (typeof obj === "string" && isDataUrl(obj)) {
+      return;
+    }
+
+    // Check size for both arrays and objects
+    const size = getSize(obj);
+    const isTooLarge = size > maxSizeBytes && path.length > 0;
+
+    if (isTooLarge) {
+      // This object/array is too large, upload it as a whole
+      const originalType = getValueType(obj);
+      const serialized = JSON.stringify(obj);
+      const promise = uploadFn(serialized, originalType).then((url) => ({
+        url,
+        originalType,
+      }));
+      promises.push({ path: [...path], promise });
+      return; // Don't traverse into this object/array further
+    }
+
+    // Object/array is not too large, traverse its children
+    if (Array.isArray(obj)) {
+      obj.forEach((item, index) => {
+        collectUploads(item, [...path, index]);
+      });
+    } else {
+      Object.keys(obj).forEach((key) => {
+        collectUploads(obj[key], [...path, key]);
+      });
+    }
+  };
+
+  // First pass: collect all upload promises
+  collectUploads(json);
+
+  // If no large objects found, return original
+  if (promises.length === 0) {
+    return json;
+  }
+
+  // Wait for all uploads to complete
+  const results = await Promise.all(promises.map((p) => p.promise));
+
+  // Second pass: use mutative to update the JSON with URL datarefs
+  return create(json, (draft: any) => {
+    promises.forEach(({ path }, index) => {
+      const { url, originalType } = results[index];
+
+      // Create a data URL that references the uploaded URL
+      // Include the original type as a parameter
+      const encodedUrl = encodeURIComponent(url);
+      const dataUrl = `data:${MIME_TYPES.URI};type=${originalType};charset=utf-8,${encodedUrl}`;
+
+      // Navigate to the parent and set the value
+      let current = draft;
+      for (let i = 0; i < path.length - 1; i++) {
+        current = current[path[i]];
+      }
+      const lastKey = path[path.length - 1];
+      current[lastKey] = dataUrl;
+    });
+  });
+};
+
+/**
  * Traverses a JSON object and converts any data ref strings (v2 data URLs)
  * into their dereferenced data. Returns a new JSON object with all datarefs resolved.
  *
