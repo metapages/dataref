@@ -94,11 +94,11 @@ version bump="patch":
         echo "❌ Working directory is not clean. Commit or stash changes first."
         exit 1
     fi
-    # Bump version in package.json
+    # Bump version in package.json and package-lock.json
     npm version {{ bump }} --no-git-tag-version
     VERSION=`cat package.json | jq -r '.version'`
     # Commit and tag
-    git add package.json
+    git add package.json package-lock.json
     git commit -m "Bump version to $VERSION"
     git tag "v$VERSION"
     echo "✅ Version bumped to $VERSION"
