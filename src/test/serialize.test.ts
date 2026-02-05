@@ -185,9 +185,9 @@ describe("Primary Serialize/Deserialize API", () => {
 
       // Large data should be uploaded (URL dataref)
       expect(typeof serialized.largeData).toBe("string");
-      expect(serialized.largeData).toContain("text/x-uri");
+      expect(serialized.largeData as unknown as string).toContain("text/x-uri");
       // URL is encoded in the dataref
-      expect(decodeURIComponent(serialized.largeData)).toContain("https://storage.example.com");
+      expect(decodeURIComponent(serialized.largeData as unknown as string)).toContain("https://storage.example.com");
 
       // Small data should be inline
       expect(typeof serialized.smallData).toBe("string");
