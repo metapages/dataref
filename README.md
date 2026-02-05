@@ -88,6 +88,71 @@ npm install @metapages/dataref
 
 ## Quick Start
 
+### Primary API (Recommended)
+
+The simplest way to work with binary data in JSON is to use the primary serialize/deserialize functions:
+
+```typescript
+import { serializeDataRefs, deserializeDataRefs } from "@metapages/dataref";
+
+// Automatically converts ALL binary types to datarefs
+const data = {
+  uint8: new Uint8Array([1, 2, 3]),
+  float32: new Float32Array([1.1, 2.2, 3.3]),
+  buffer: new Uint8Array([255, 128, 0]).buffer,
+  blob: new Blob(["hello"], { type: "text/plain" }),
+  file: new File(["content"], "test.txt"),
+  string: "regular data",
+  nested: {
+    array: new Int16Array([100, -100])
+  }
+};
+
+// Serialize: Convert all binary types to dataref strings
+const serialized = await serializeDataRefs(data);
+// All binary types are now dataref strings, safe for JSON.stringify()
+
+// Store or transmit
+const json = JSON.stringify(serialized);
+
+// Deserialize: Convert all datarefs back to original types
+const deserialized = await deserializeDataRefs(JSON.parse(json));
+// All binary types are restored to their original types
+```
+
+**With upload/download support for large objects:**
+
+```typescript
+// Serialize with upload for large data
+const serialized = await serializeDataRefs(data, {
+  uploadFn: async (data, metadata) => {
+    // Upload to your storage service
+    const response = await fetch("/upload", {
+      method: "POST",
+      body: data
+    });
+    const { url } = await response.json();
+    return url;
+  },
+  maxSizeBytes: 10240 // Upload objects > 10KB
+});
+
+// Deserialize with custom download
+const deserialized = await deserializeDataRefs(serialized, {
+  downloadFn: async (url) => {
+    const response = await fetch(url);
+    return response.arrayBuffer();
+  }
+});
+```
+
+**What gets converted:**
+- ✅ All TypedArray types (Int8Array, Uint8Array, Float32Array, etc.)
+- ✅ ArrayBuffer
+- ✅ Blob (with MIME type preservation)
+- ✅ File (with name preservation)
+- ❌ Regular data (strings, numbers, objects, arrays) — unchanged
+
 ### The Core Workflow: Encode → Serialize → Decode
 
 The most common use case is encoding complex data for JSON serialization, then decoding it later:
@@ -179,6 +244,8 @@ The library supports all JavaScript data types:
 | ArrayBuffer | Base64 binary | `bufferToDataUrl(buffer)` |
 | Uint8Array | Base64 binary | `bufferToDataUrl(uint8Array)` |
 | TypedArrays | Base64 with type | `typedArrayToDataUrl(array, type)` |
+| Blob | Base64 with MIME type | `blobToDataUrl(blob)` |
+| File | Base64 with name | `fileToDataUrl(file)` |
 | URL reference | URL-encoded URI | `urlToDataUrl("https://...")` |
 
 **Supported TypedArray types:**
@@ -326,6 +393,81 @@ isDataRef("regular string");                     // false
 
 ## API Reference
 
+### Primary Functions (Recommended)
+
+#### `serializeDataRefs<T>(json: T, options?: SerializeOptions): Promise<T>`
+
+Primary serialize function that automatically converts all binary types in a JSON object to dataref strings.
+
+**Converts:**
+- TypedArrays (Int8Array, Uint8Array, Float32Array, etc.) → dataref strings
+- ArrayBuffer → dataref strings
+- Blob → dataref strings (with MIME type preservation)
+- File → dataref strings (with name preservation)
+- Regular data (strings, numbers, objects, arrays) → unchanged
+
+**Options:**
+```typescript
+interface SerializeOptions {
+  uploadFn?: (data: Blob | ArrayBuffer, metadata: {
+    type: string;
+    size: number;
+    mimeType?: string;
+  }) => Promise<string>;
+  maxSizeBytes?: number; // If provided, objects > size get uploaded
+}
+```
+
+**Example:**
+```typescript
+const serialized = await serializeDataRefs({
+  array: new Uint8Array([1, 2, 3]),
+  blob: new Blob(["test"], { type: "text/plain" }),
+  string: "unchanged"
+});
+```
+
+**With upload:**
+```typescript
+const serialized = await serializeDataRefs(data, {
+  uploadFn: async (data, metadata) => {
+    // Upload and return URL
+    return "https://storage.example.com/...";
+  },
+  maxSizeBytes: 10240 // Upload if > 10KB
+});
+```
+
+#### `deserializeDataRefs<T>(json: T, options?: DeserializeOptions): Promise<T>`
+
+Primary deserialize function that converts all dataref strings in a JSON object back to their original binary types.
+
+**Options:**
+```typescript
+interface DeserializeOptions {
+  fetchOptions?: RequestInit; // For URL-based datarefs
+  downloadFn?: (url: string) => Promise<ArrayBuffer>; // Custom download
+}
+```
+
+**Example:**
+```typescript
+const deserialized = await deserializeDataRefs(serialized);
+// All datarefs are converted back to original types
+```
+
+**With custom download:**
+```typescript
+const deserialized = await deserializeDataRefs(serialized, {
+  downloadFn: async (url) => {
+    const response = await fetch(url, {
+      headers: { "Authorization": "Bearer token" }
+    });
+    return response.arrayBuffer();
+  }
+});
+```
+
 ### Encoding Functions (to Data URL)
 
 #### `textToDataUrl(text: string): DataUrl`
@@ -360,6 +502,15 @@ typedArrayToDataUrl(new Float32Array([1.1, 2.2]), "Float32Array");
 // => "data:application/octet-stream;type=Float32Array;base64,..."
 ```
 
+#### `blobToDataUrl(blob: Blob): Promise<DataUrl>`
+Converts a Blob to a data URL with MIME type preservation.
+
+```typescript
+const blob = new Blob(["content"], { type: "text/plain" });
+await blobToDataUrl(blob);
+// => "data:text/plain;type=Blob;base64,..."
+```
+
 #### `urlToDataUrl(url: string, fetchOptions?: RequestInit): Promise<DataUrl>`
 Creates a URL reference or fetches and encodes URL content.
 
@@ -388,6 +539,14 @@ Decodes a data URL to an ArrayBuffer.
 
 #### `dataUrlToTypedArray<T>(dataUrl: DataUrl, fetchOptions?: RequestInit): Promise<T>`
 Decodes a data URL to a TypedArray with type preservation.
+
+#### `dataUrlToBlob(dataUrl: DataUrl, fetchOptions?: RequestInit): Promise<Blob>`
+Decodes a data URL to a Blob with MIME type preservation.
+
+```typescript
+const blob = await dataUrlToBlob(dataUrl);
+// => Blob { type: "text/plain", size: 7, ... }
+```
 
 #### `dataUrlToFile(dataUrl: DataUrl, name?: string, fetchOptions?: RequestInit): Promise<File>`
 Converts a data URL to a File object.

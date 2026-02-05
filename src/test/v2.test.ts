@@ -4,10 +4,12 @@ import {
   jsonToDataUrl,
   bufferToDataUrl,
   typedArrayToDataUrl,
+  blobToDataUrl,
   dataUrlToText,
   dataUrlToJson,
   dataUrlToBuffer,
   dataUrlToTypedArray,
+  dataUrlToBlob,
   isDataUrl,
   urlToDataUrl,
   dataUrlToUrl,
@@ -483,6 +485,79 @@ describe("v2 DataRef - Basic Type Conversions", () => {
       expect(result.items[0]).toBe("regular");
       expect(result.items[1]).toBe("text content");
       expect((result.items[2] as any).key).toEqual({ nested: { value: 123 } });
+    });
+  });
+
+  describe("Blob conversions", () => {
+    it("should convert Blob to data URL and back", async () => {
+      const originalBlob = new Blob(["Hello, Blob!"], { type: "text/plain" });
+      const dataUrl = await blobToDataUrl(originalBlob);
+
+      expect(isDataUrl(dataUrl)).toBe(true);
+      expect(dataUrl).toContain("text/plain");
+
+      const decodedBlob = await dataUrlToBlob(dataUrl);
+      expect(decodedBlob.type).toBe("text/plain");
+      expect(decodedBlob.size).toBe(originalBlob.size);
+
+      const decodedText = await decodedBlob.text();
+      expect(decodedText).toBe("Hello, Blob!");
+    });
+
+    it("should handle Blob with no type", async () => {
+      const originalBlob = new Blob(["No type"]);
+      const dataUrl = await blobToDataUrl(originalBlob);
+
+      const decodedBlob = await dataUrlToBlob(dataUrl);
+      const decodedText = await decodedBlob.text();
+      expect(decodedText).toBe("No type");
+    });
+
+    it("should handle empty Blob", async () => {
+      const originalBlob = new Blob([]);
+      const dataUrl = await blobToDataUrl(originalBlob);
+
+      const decodedBlob = await dataUrlToBlob(dataUrl);
+      expect(decodedBlob.size).toBe(0);
+    });
+
+    it("should preserve MIME type for various Blob types", async () => {
+      const testCases = [
+        { type: "application/json", content: '{"test": true}' },
+        { type: "text/html", content: "<html></html>" },
+        { type: "application/octet-stream", content: "binary data" },
+      ];
+
+      for (const { type, content } of testCases) {
+        const blob = new Blob([content], { type });
+        const dataUrl = await blobToDataUrl(blob);
+        const decoded = await dataUrlToBlob(dataUrl);
+
+        expect(decoded.type).toBe(type);
+        expect(await decoded.text()).toBe(content);
+      }
+    });
+
+    it("should handle binary Blob data", async () => {
+      const binaryData = new Uint8Array([0, 1, 2, 255, 254, 253]);
+      const originalBlob = new Blob([binaryData], { type: "application/octet-stream" });
+      const dataUrl = await blobToDataUrl(originalBlob);
+
+      const decodedBlob = await dataUrlToBlob(dataUrl);
+      const decodedBuffer = await decodedBlob.arrayBuffer();
+      const decodedArray = new Uint8Array(decodedBuffer);
+
+      expect(decodedArray).toEqual(binaryData);
+    });
+
+    it("should handle large Blob", async () => {
+      const largeContent = "x".repeat(10000);
+      const originalBlob = new Blob([largeContent], { type: "text/plain" });
+      const dataUrl = await blobToDataUrl(originalBlob);
+
+      const decodedBlob = await dataUrlToBlob(dataUrl);
+      expect(decodedBlob.size).toBe(originalBlob.size);
+      expect(await decodedBlob.text()).toBe(largeContent);
     });
   });
 });
