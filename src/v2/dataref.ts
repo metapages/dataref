@@ -11,7 +11,9 @@ export const isDataUrl = (value: unknown): value is DataUrl => {
 };
 
 export const getMimeType = (dataUrl: DataUrl): string => {
-  const match = dataUrl.match(/^data:([^;]+)/);
+  // Stop at the first ";" (parameters) OR "," (payload): a data URL is allowed
+  // to carry no parameters at all, e.g. "data:text/x-uri,https%3A%2F%2F..."
+  const match = dataUrl.match(/^data:([^;,]+)/);
   return match ? match[1] : MIME_TYPES.OCTET_STREAM;
 };
 
@@ -600,6 +602,88 @@ export const dereferenceDataRefs = async <T = any>(
   });
 };
 
+const TYPED_ARRAY_NAMES: Set<string> = new Set([
+  "BigInt64Array",
+  "BigUint64Array",
+  "Float32Array",
+  "Float64Array",
+  "Int16Array",
+  "Int32Array",
+  "Int8Array",
+  "Uint16Array",
+  "Uint32Array",
+  "Uint8Array",
+  "Uint8ClampedArray",
+]);
+
+/**
+ * Rebuild the original value from the bytes behind a `text/x-uri` dataref.
+ *
+ * The "type" parameter records what the producer serialized: a binary type
+ * from serializeDataRefs, or a JSON-ish type name from
+ * convertLargeObjectsToDataRefs. A ref built by urlToDataUrl records nothing,
+ * so the response's own content type decides.
+ *
+ * @param buffer - The downloaded bytes
+ * @param params - Parameters parsed off the data URL
+ * @param contentType - Content-Type of the response, when one is available
+ */
+const urlRefBufferToValue = (
+  buffer: ArrayBuffer,
+  params: Record<string, string>,
+  contentType?: string | null
+): any => {
+  const typeName = params.type;
+  const mimeTypeParam = params.mimeType;
+  const decode = () => new TextDecoder().decode(buffer);
+
+  if (typeName === "Blob") {
+    return new Blob([buffer], {
+      type: mimeTypeParam || MIME_TYPES.OCTET_STREAM,
+    });
+  }
+  if (typeName === "File") {
+    const fileName = params.name || "downloaded-file";
+    return new File([buffer], fileName, {
+      type: mimeTypeParam || MIME_TYPES.OCTET_STREAM,
+    });
+  }
+  if (typeName === "ArrayBuffer") {
+    return buffer;
+  }
+  // Only real TypedArray names: indexing globalThis blindly turns a type of
+  // e.g. "Array" into new Array(buffer), which is not what was uploaded.
+  if (typeName && TYPED_ARRAY_NAMES.has(typeName)) {
+    const TypedArray = globalThis[typeName as TypedArrayType];
+    return new TypedArray(buffer);
+  }
+  // JSON-ish types, as recorded by convertLargeObjectsToDataRefs
+  if (typeName === "string") {
+    return decode();
+  }
+  if (
+    typeName === "object" ||
+    typeName === "array" ||
+    typeName === "number" ||
+    typeName === "boolean" ||
+    typeName === "null"
+  ) {
+    return JSON.parse(decode());
+  }
+
+  // Nothing recorded: let the response describe itself
+  const responseMimeType = (mimeTypeParam || contentType || "")
+    .split(";")[0]
+    .trim();
+  if (responseMimeType === MIME_TYPES.JSON) {
+    return JSON.parse(decode());
+  }
+  if (responseMimeType.startsWith("text/")) {
+    return decode();
+  }
+  return buffer;
+};
+
 /**
  * Dereferences a single data URL to its actual value.
  * Determines the appropriate type based on MIME type and parameters.
@@ -615,9 +699,11 @@ const dereferenceDataUrl = async (
   const mimeType = getMimeType(dataUrl);
   const params = getParameters(dataUrl);
 
-  // Handle URL-based datarefs
-  if (mimeType === MIME_TYPES.URI && params.type) {
-    // This is an uploaded binary, download it first
+  // Handle URL-based datarefs. Note this is NOT gated on params.type: a ref
+  // built by urlToDataUrl carries no type at all, and skipping this branch
+  // for those left them falling through to the plain-buffer case below.
+  if (mimeType === MIME_TYPES.URI) {
+    // The payload is a URL, so download the real bytes first
     const url = dataUrlToUrl(dataUrl);
     if (!url) {
       throw new Error("Invalid URL dataref");
@@ -629,26 +715,11 @@ const dereferenceDataUrl = async (
     }
 
     const buffer = await response.arrayBuffer();
-
-    // Convert based on original type
-    const typeName = params.type;
-    const mimeTypeParam = params.mimeType;
-
-    if (typeName === "Blob") {
-      return new Blob([buffer], { type: mimeTypeParam || MIME_TYPES.OCTET_STREAM });
-    } else if (typeName === "File") {
-      const fileName = params.name || "downloaded-file";
-      return new File([buffer], fileName, { type: mimeTypeParam || MIME_TYPES.OCTET_STREAM });
-    } else if (typeName === "ArrayBuffer") {
-      return buffer;
-    } else {
-      // TypedArray
-      const TypedArray = globalThis[typeName as TypedArrayType];
-      if (TypedArray) {
-        return new TypedArray(buffer);
-      }
-      return buffer;
-    }
+    return urlRefBufferToValue(
+      buffer,
+      params,
+      response.headers.get("content-type")
+    );
   }
 
   // Check type parameter first (most specific)
@@ -713,28 +784,11 @@ export const deserializeDataRefs = async <T = any>(
           const url = dataUrlToUrl(obj);
           const params = getParameters(obj);
           if (url) {
-            // Use custom download function
-            const promise = downloadFn(url).then((buffer) => {
-              // Convert based on original type
-              const typeName = params.type;
-              const mimeTypeParam = params.mimeType;
-
-              if (typeName === "Blob") {
-                return new Blob([buffer], { type: mimeTypeParam || MIME_TYPES.OCTET_STREAM });
-              } else if (typeName === "File") {
-                const fileName = params.name || "downloaded-file";
-                return new File([buffer], fileName, { type: mimeTypeParam || MIME_TYPES.OCTET_STREAM });
-              } else if (typeName === "ArrayBuffer") {
-                return buffer;
-              } else {
-                // TypedArray
-                const TypedArray = globalThis[typeName as TypedArrayType];
-                if (TypedArray) {
-                  return new TypedArray(buffer);
-                }
-                return buffer;
-              }
-            });
+            // Use custom download function. No response to inspect here, so
+            // an untyped ref comes back as the raw buffer.
+            const promise = downloadFn(url).then((buffer) =>
+              urlRefBufferToValue(buffer, params)
+            );
             promises.push({ path: [...path], promise });
             return;
           }
